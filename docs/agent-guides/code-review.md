@@ -1,3 +1,6 @@
+> **Upstream notes.** This fork opens local checkouts and patches using
+> `plannotator review`. Plugin commands, forge review and Inbox are not supported.
+
 ## Code Review Flow
 
 ```

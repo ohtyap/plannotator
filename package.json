@@ -2,7 +2,7 @@
   "name": "plannotator",
   "version": "0.29.1",
   "private": true,
-  "description": "Interactive Plan Review for Claude Code - annotate plans visually, share with team, automatically send feedback",
+  "description": "Standalone CLI for reviewing local changes and annotating documents in the browser",
   "author": "backnotprop",
   "license": "MIT OR Apache-2.0",
   "bin": {
@@ -10,51 +10,31 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/backnotprop/plannotator.git"
+    "url": "git+https://github.com/ohtyap/plannotator.git"
   },
-  "homepage": "https://github.com/backnotprop/plannotator",
+  "homepage": "https://github.com/ohtyap/plannotator",
   "bugs": {
-    "url": "https://github.com/backnotprop/plannotator/issues"
+    "url": "https://github.com/ohtyap/plannotator/issues"
   },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev:hook": "bun run --cwd apps/hook dev",
-    "dev:portal": "bun run --cwd apps/portal dev",
-    "dev:marketing": "bun run --cwd apps/marketing dev",
+    "dev:annotate": "bun run --cwd apps/cli dev",
     "dev:review": "bun run --cwd apps/review dev",
-    "build:hook": "bun run --cwd apps/hook build",
-    "build:portal": "bun run --cwd apps/portal build",
-    "build:marketing": "bun run --cwd apps/marketing build",
-    "build:opencode": "bun run --cwd apps/opencode-plugin build",
-    "build:dsh": "bun run --cwd apps/dsh-plugin build",
-    "build:cline": "bun run --cwd apps/cline-plugin build",
-    "build:openclaw": "bun run --cwd apps/openclaw-plugin build",
+    "build:annotate": "bun run --cwd apps/cli build",
     "build:review": "bun run --cwd apps/review build",
-    "build:t3": "bun run --cwd packages/t3-code build",
-    "build:pi": "bun run build:review && bun run build:hook && bun run --cwd apps/pi-extension build",
-    "build": "bun run build:review && bun run build:hook && bun run build:opencode && bun run build:dsh && bun run build:cline && bun run build:openclaw",
-    "dev:vscode": "bun run --cwd apps/vscode-extension watch",
-    "build:vscode": "bun run --cwd apps/vscode-extension build",
+    "build": "bun run build:review && bun run build:annotate",
+    "build:cli": "bun run build && bun scripts/compile-cli.ts",
     "build:viewer-pin": "rm -f apps/guides-show/dist/viewer/manifest.json && bun run --cwd apps/guides-show build:viewer && bun run --cwd apps/guides-show sync:manifest",
-    "package:vscode": "bun run --cwd apps/vscode-extension package",
-    "check:release-version": "node scripts/check-release-version.mjs",
-    "check:sibling-deps": "bun scripts/check-sibling-deps.ts",
-    "gen:skills": "bun scripts/gen-skill-sections.ts",
-    "test": "bun test",
+    "test": "bun run test:sandbox apps/cli/server/annotate-command.test.ts apps/cli/server/annotate-output.test.ts apps/cli/server/annotate-resolution.test.ts apps/cli/server/strict-annotate-result.test.ts apps/cli/server/review-output.test.ts packages/server/annotate-bundle.test.ts packages/server/annotate-draft.test.ts packages/server/annotate-live-version.test.ts packages/server/live-proxy.test.ts packages/server/request-host.test.ts packages/server/review-workspace.test.ts packages/shared/annotate-target.test.ts packages/shared/annotate-client-lease.test.ts packages/shared/review-core.test.ts packages/shared/review-open-state.test.ts packages/shared/review-draft.test.ts packages/ai/ai.test.ts -- --timeout=15000",
     "test:sandbox": "bun scripts/test-sandbox.ts",
+    "test:cli": "bun test --timeout 20000 tests/standalone-cli.smoke.test.ts",
     "postinstall": "bun apps/guides-show/build/sync-manifest.ts --if-missing",
-    "bench:plan-load": "bun scripts/bench-plan-load.mjs",
-    "typecheck": "bash apps/pi-extension/vendor.sh && tsc --noEmit -p packages/core/tsconfig.json && tsc --noEmit -p packages/references/tsconfig.json && tsc --noEmit -p packages/references/tsconfig.test.json && tsc --noEmit -p packages/system/tsconfig.json && tsc --noEmit -p packages/acp-client/tsconfig.json && tsc --noEmit -p packages/shared/tsconfig.json && tsc --noEmit -p packages/ai/tsconfig.json && tsc --noEmit -p packages/server/tsconfig.json && tsc --noEmit -p packages/ui/tsconfig.json && tsc --noEmit -p packages/guide-viewer/tsconfig.json && tsc --noEmit -p apps/guides-show/tsconfig.json && tsc --noEmit -p apps/relay/tsconfig.json && tsc --noEmit -p apps/feedback-service/tsconfig.json && tsc --noEmit -p apps/telemetry/tsconfig.json && tsc --noEmit -p packages/ui/tsconfig.strict-consumer.json && tsc --noEmit -p apps/pi-extension/tsconfig.json && tsc --noEmit -p apps/hook/hooks/mod/tsconfig.json && tsc --noEmit -p apps/hook/tsconfig.server.json && tsc --noEmit -p packages/inbox/tsconfig.json && tsc --noEmit -p apps/inbox/tsconfig.json && tsc --noEmit -p packages/t3-code/tsconfig.json && tsc --noEmit -p apps/dsh-plugin/tsconfig.json && tsc --noEmit -p apps/cline-plugin/tsconfig.json && tsc --noEmit -p apps/openclaw-plugin/tsconfig.json",
+    "typecheck": "tsc --noEmit -p apps/cli/tsconfig.server.json",
     "build:ui-css": "bun run --cwd packages/ui build:css",
-    "test:e2e:inbox": "playwright test -c tests/e2e/playwright.config.ts",
-    "test:e2e:quarantine": "bun run scripts/e2e-quarantine.ts",
-    "e2e:slice": "bun run scripts/e2e-slice.ts",
-    "ci:affected": "bun run scripts/ci-affected.ts",
-    "verify:inbox-live": "bun scripts/inbox-live-verify.ts",
-    "test:parity:inbox-thread": "bun scripts/inbox-thread-parity.ts"
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.303",
@@ -68,13 +48,14 @@
   },
   "devDependencies": {
     "@pierre/diffs-sem": "file:vendor/pierre-diffs/pierre-diffs-1.7.0-beta.3-sem.6.tgz",
-    "@agentclientprotocol/sdk": "1.9.0",
-    "@modelcontextprotocol/client": "2.3.1",
     "@playwright/test": "1.64.1",
     "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/turndown": "^5.0.6",
     "bun-types": "^1.4.3",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "^6.2.0"
   },
   "overrides": {
     "lodash-es": "4.18.1",

@@ -1,5 +1,5 @@
 import type { DiffType } from "./vcs";
-import { getPRPlatformCapabilities, type PRMetadata } from "./pr";
+import { getPRPlatformCapabilities, type PRMetadata } from "@plannotator/shared/pr-types";
 import type { WorkspaceReviewPromptContext } from "@plannotator/shared/review-workspace";
 import {
   buildWorkspacePromptContextLines,

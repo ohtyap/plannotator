@@ -126,6 +126,8 @@ interface SettingsProps {
    * true; a host that omits it keeps the pre-parity annotate tab set.
    */
   annotateParity?: boolean;
+  /** The standalone CLI exports annotations locally, without notes apps. */
+  localSaveOnly?: boolean;
   /**
    * Hide General's "Enter saves a comment" row (#1934). Default false: the
    * row shows. A host that drives the `enterSavesComment` setting itself, or
@@ -1186,7 +1188,7 @@ const CommentsTab: React.FC = () => {
   );
 };
 
-export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], gitUser, autoUpdateSetting, updateCheckSetting, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, hideRepoOwnerSetting = false, showDocumentTextSize = false, showDocumentFont = false }) => {
+export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, localSaveOnly = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], gitUser, autoUpdateSetting, updateCheckSetting, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, hideRepoOwnerSetting = false, showDocumentTextSize = false, showDocumentFont = false }) => {
   const webmcpTools = useWebMcpToolsEnabled();
   const autoUpdate = useConfigValue('autoUpdate');
   const updateChecksOn = updateCheckSetting ? updateCheckSetting.on : true;
@@ -1295,7 +1297,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
   const integrationTabs: { id: SettingsTab; label: string }[] = [
     { id: 'files', label: 'Files' },
-    ...(mode === 'plan' || annotateDocumentTabs
+    ...(!localSaveOnly && (mode === 'plan' || annotateDocumentTabs)
       ? [{ id: 'obsidian' as SettingsTab, label: 'Obsidian' }, { id: 'bear' as SettingsTab, label: 'Bear' }, { id: 'octarine' as SettingsTab, label: 'Octarine' }, ...(isNotionAvailable() ? [{ id: 'notion' as SettingsTab, label: 'Notion' }] : [])]
       : []),
   ];
@@ -1367,7 +1369,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
   // Fetch detected vaults when Obsidian is enabled
   useEffect(() => {
-    if (obsidian.enabled && detectedVaults.length === 0 && !vaultsLoading) {
+    if (!localSaveOnly && obsidian.enabled && detectedVaults.length === 0 && !vaultsLoading) {
       setVaultsLoading(true);
       const detect = onDetectObsidianVaults
         ?? (() => fetch('/api/obsidian/vaults').then(res => res.json()).then((data: { vaults: string[] }) => data.vaults || []));
@@ -1382,7 +1384,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
         .catch(() => setDetectedVaults([]))
         .finally(() => setVaultsLoading(false));
     }
-  }, [obsidian.enabled]);
+  }, [obsidian.enabled, localSaveOnly]);
 
   const handleFileBrowserChange = (updates: Partial<FileBrowserSettings>) => {
     const newSettings = { ...fileBrowserSettings, ...updates };
@@ -2368,19 +2370,21 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         </div>
                       </div>
                       <select
-                        value={defaultNotesApp}
+                        value={localSaveOnly && defaultNotesApp !== 'download' ? 'ask' : defaultNotesApp}
                         onChange={(e) => handleDefaultNotesAppChange(e.target.value as DefaultNotesApp)}
                         className="w-full px-3 py-2 bg-muted rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
                       >
                         <option value="ask">Ask each time</option>
                         <option value="download">Download Annotations</option>
-                        {obsidianDefaultSaveAvailable && <option value="obsidian">Obsidian</option>}
-                        {bearDefaultSaveAvailable && <option value="bear">Bear</option>}
-                        {octarineDefaultSaveAvailable && <option value="octarine">Octarine</option>}
-                        {(notionDefaultSaveAvailable || defaultNotesApp === 'notion') && <option value="notion">Notion</option>}
+                        {!localSaveOnly && obsidianDefaultSaveAvailable && <option value="obsidian">Obsidian</option>}
+                        {!localSaveOnly && bearDefaultSaveAvailable && <option value="bear">Bear</option>}
+                        {!localSaveOnly && octarineDefaultSaveAvailable && <option value="octarine">Octarine</option>}
+                        {!localSaveOnly && (notionDefaultSaveAvailable || defaultNotesApp === 'notion') && <option value="notion">Notion</option>}
                       </select>
                       <div className="text-[10px] text-muted-foreground/70">
-                        {defaultNotesApp === 'ask'
+                        {localSaveOnly && defaultNotesApp !== 'download'
+                          ? 'Opens the annotation export dialog'
+                          : defaultNotesApp === 'ask'
                           ? 'Opens Export dialog with Notes tab'
                           : defaultNotesApp === 'download'
                             ? `${modKey}+S downloads the annotations file`
@@ -2390,6 +2394,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
                     <div className="border-t border-border" />
 
+                    {!localSaveOnly && <>
                     {/* Integration links */}
                     <div className="space-y-2">
                       <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
@@ -2438,6 +2443,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         </span>
                       </button>
                     </div>
+                    </>}
                   </>
                 )}
 

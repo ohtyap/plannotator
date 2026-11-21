@@ -1,8 +1,8 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Link2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Download, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { useDismissablePopover } from '@plannotator/ui/hooks/useDismissablePopover';
-import { GuideShareHost, useGuideExportInfo } from './GuideExportButton';
+import { useGuideExportInfo } from './GuideExportButton';
 
 const ITEM =
   'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:bg-transparent';
@@ -26,7 +26,7 @@ export function GuideRowMenu({ id, title, onRename, onDelete }: { id: string; ti
     setPos({ top: below + height > window.innerHeight ? Math.max(8, r.top - height - 4) : below, right: Math.max(8, window.innerWidth - r.right) });
   }, [open]);
 
-  const { info, share, setShareOpen, encoded } = exportInfo;
+  const { info, encoded } = exportInfo;
   const pick = (fn: () => void) => () => {
     setOpen(false);
     fn();
@@ -75,11 +75,6 @@ export function GuideRowMenu({ id, title, onRename, onDelete }: { id: string; ti
                 <Download size={13} /> Download portable guide
               </button>
             )}
-            {share?.enabled && info && (
-              <button type="button" role="menuitem" className={ITEM} onClick={pick(() => setShareOpen(true))}>
-                <Link2 size={13} className="text-muted-foreground" /> {share.existing ? 'Share link' : 'Create share link'}
-              </button>
-            )}
             <div className="my-1 h-px bg-border" />
             <button type="button" role="menuitem" className={ITEM} onClick={pick(onDelete)}>
               <Trash2 size={13} className="text-muted-foreground" /> Delete
@@ -87,7 +82,6 @@ export function GuideRowMenu({ id, title, onRename, onDelete }: { id: string; ti
           </div>,
           document.body,
         )}
-      <GuideShareHost jobId={jobId} exportInfo={exportInfo} />
     </>
   );
 }

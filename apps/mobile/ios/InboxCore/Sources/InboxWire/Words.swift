@@ -1,1 +1,0 @@
-../../../../contract/generated/swift/Words.swift

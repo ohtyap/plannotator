@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const repoRoot = path.resolve(path.dirname(__filename), "..");
-const sourceEntry = path.join(repoRoot, "apps", "hook", "server", "index.ts");
+const sourceEntry = path.join(repoRoot, "apps", "cli", "server", "index.ts");
 
 if (!fs.existsSync(sourceEntry)) {
   console.error(`Could not find Plannotator source entry at ${sourceEntry}`);
@@ -14,6 +14,7 @@ if (!fs.existsSync(sourceEntry)) {
 const result = childProcess.spawnSync("bun", [sourceEntry, ...process.argv.slice(2)], {
   cwd: process.cwd(),
   stdio: "inherit",
+  windowsHide: true,
 });
 
 if (result.error) {
@@ -21,4 +22,5 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(typeof result.status === "number" ? result.status : 0);
+if (result.signal) process.kill(process.pid, result.signal);
+else process.exit(result.status ?? 1);

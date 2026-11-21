@@ -1,3 +1,7 @@
+> **Upstream notes.** Use `plannotator annotate` directly in this fork.
+> It fetches web snapshots without Jina, and has no hooks, agent session bridge,
+> notes-app export, or hosted sharing. See `plannotator annotate --help`.
+
 ## Annotate Flow
 
 ```

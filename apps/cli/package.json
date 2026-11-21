@@ -1,0 +1,28 @@
+{
+  "name": "@plannotator/cli",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && cp ../review/dist/index.html dist/review.html && cp -R ../review/dist/diagram-engine ../review/dist/sem-diff dist/",
+    "serve": "bun run server/index.ts"
+  },
+  "dependencies": {
+    "@plannotator/core": "workspace:*",
+    "@plannotator/editor": "workspace:*",
+    "@plannotator/server": "workspace:*",
+    "@plannotator/shared": "workspace:*",
+    "@plannotator/ui": "workspace:*",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^4.1.18",
+    "@tailwindcss/vite": "^4.3.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "@types/node": "^26.6.5"
+  }
+}

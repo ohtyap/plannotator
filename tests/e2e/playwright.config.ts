@@ -1,8 +1,6 @@
 /**
- * The browser proofs: headless Playwright against the Inbox window, annotate,
- * plan review, code review and the VS Code Guides webview, mostly on the
- * compiled binary under a temp PLANNOTATOR_DATA_DIR. Build the binary first
- * (see inbox.spec.ts), then `bun run test:e2e:inbox`. One spec:
+ * Headless browser tests for the review and annotate UI. Build the binary
+ * first (`bun run build:cli`), then `bun run test:e2e`. One spec:
  * `bunx playwright test -c tests/e2e/playwright.config.ts <name>.spec.ts`.
  *
  * Each spec says what it proves in its own header comment. A new
@@ -10,21 +8,18 @@
  * file; name it `*-webkit.spec.ts` to run it in the `webkit` project only.
  */
 import { defineConfig } from '@playwright/test';
+import { resolve } from 'node:path';
 import { quarantineFilter } from './quarantine';
 
-process.env.PLANNOTATOR_RELAY_URL ??= 'http://127.0.0.1:9';
-// Share this space never reaches a Spaces host from a spec (tests/spaces-host-pin.test.ts).
-process.env.PLANNOTATOR_SPACES_URL = 'http://127.0.0.1:9';
-
-/** Specs that their own config runs, never this one: the thread parity harness (inbox-thread-parity.config.ts). */
-const OWN_CONFIG = ['inbox-thread-parity.spec.ts'];
+process.env.PLANNOTATOR_E2E_BINARY ??= resolve(
+  __dirname, '../../dist', process.platform === 'win32' ? 'plannotator.exe' : 'plannotator',
+);
 /** Specs that run in the `webkit` project only. */
 const WEBKIT_ONLY = '*-webkit.spec.ts';
 
 export default defineConfig({
   testDir: '.',
   testMatch: '*.spec.ts',
-  testIgnore: OWN_CONFIG,
   // In CI, the flaky tests in quarantine.json are left out; `bun run test:e2e:quarantine` runs their specs locally.
   ...quarantineFilter(process.env),
   outputDir: '../../.local/test-results',
@@ -40,14 +35,13 @@ export default defineConfig({
     browserName: 'chromium',
     headless: true,
     viewport: { width: 1440, height: 900 },
-    // A failed test's screenshot, beside its error-context.md: CI keeps both (inbox-e2e.yml). No trace: it would record every test, passing ones too.
+    // Keep a screenshot on failure without recording traces for passing tests.
     screenshot: 'only-on-failure',
     launchOptions: { args: ['--use-mock-keychain', '--password-store=basic'] },
   },
   projects: [
-    // Every spec but the WebKit-only ones, in Chromium. A project's testIgnore replaces the top-level one, so it repeats OWN_CONFIG.
-    { name: 'chromium', testIgnore: [...OWN_CONFIG, WEBKIT_ONLY] },
+    { name: 'chromium', testIgnore: WEBKIT_ONLY },
     // The WebKit-only specs, and the toolstrip's right-to-left check in WebKit too. No Chromium flags here: WebKit refuses them.
-    { name: 'webkit', testMatch: [WEBKIT_ONLY, 'toolstrip-rtl.spec.ts', 'inbox-inline-html.spec.ts', 'inbox-debug-log.spec.ts', 'inbox-links-in-place.spec.ts', 'inbox-reuse-attachments.spec.ts', 'inbox-inline-media.spec.ts'], use: { browserName: 'webkit', launchOptions: { args: [] } } },
+    { name: 'webkit', testMatch: [WEBKIT_ONLY, 'toolstrip-rtl.spec.ts'], use: { browserName: 'webkit', launchOptions: { args: [] } } },
   ],
 });

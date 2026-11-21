@@ -30,7 +30,6 @@ import { isFaviconStyle, type FaviconStyle } from './favicon';
 import { isAnnotateAgentTerminalSide, type AnnotateAgentTerminalSide } from './agent-terminal';
 import { parseAgentSwitchConfig, agentSwitchConfigValue, type AgentSwitchConfigValue } from './agent-switch';
 import { isLocalhostSubdomain } from './loopback-host';
-import { INBOX_TOOL_NAME, inboxReminderCustomText, inboxReminderFor, inboxReminderRulesText } from './inbox/connection';
 import { parseAnnotateView, type AnnotateView } from '@plannotator/core/config-types';
 export type { DefaultDiffType, DiffLineBgIntensity, DiffOptions, JjDefaultDiffType, ReviewDefaults, ThemeConfig, FaviconStyle };
 
@@ -2279,22 +2278,6 @@ export function resolveInboxReminder(
   host: InboxToolHost,
 ): boolean {
   return INBOX_REMINDER_HOSTS.includes(host) && resolveInboxTool(config, env, host) && (configuredInboxReminder(config, host) ?? true);
-}
-
-/**
- * The Inbox reminder a `host` session starts with, once resolveInboxReminder
- * said it gets one: the person's own text from config.json
- * (`prompts.inbox.runtimes.<host>.reminder`, then `prompts.inbox.reminder`;
- * `plannotator_inbox` in it renamed to `toolName`), else exactly today's line
- * (`inboxReminderText(toolName, { wakes })`). Hosts call it once per session
- * start, with the switch: the line sits in the cached prompt prefix.
- */
-export function resolveInboxReminderText(
-  config: PlannotatorConfig,
-  host: InboxToolHost,
-  options: { wakes?: boolean; toolName?: string } = {},
-): string {
-  return inboxReminderFor(inboxReminderCustomText(config, host), options.toolName ?? INBOX_TOOL_NAME, { wakes: options.wakes, rules: inboxReminderRulesText(config, host) });
 }
 
 /**

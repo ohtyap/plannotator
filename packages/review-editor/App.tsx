@@ -29,16 +29,13 @@ import {
 } from './reviewDecision';
 import { useUpdateCheck } from '@plannotator/ui/hooks/useUpdateCheck';
 import { useUpdateToast } from '@plannotator/ui/hooks/useUpdateToast';
-import { useUpdateCheckSetting } from '@plannotator/ui/hooks/useUpdateCheckSetting';
 import { useCookieHostSetting } from '@plannotator/ui/hooks/useCookieHostSetting';
 import { adoptPackageChangesConfig, usePackageChangesSetting } from '@plannotator/ui/hooks/usePackageChangesSetting';
 import { parseUpdateAdvert, parseUpdateCheckFailing, type UpdateAdvert, type UpdateCheckFailingAdvert } from '@plannotator/ui/utils/updateNotice';
 import { claimAutoUpdateNotice, describeAutoUpdateNotice, parseAutoUpdateNotice, type AutoUpdateNotice } from '@plannotator/ui/utils/autoUpdateNotice';
 import { storage } from '@plannotator/ui/utils/storage';
 import { RefHoverCards } from '@plannotator/ui/components/RefHoverCard';
-import { refCardRouteTransport, setRefCardTransport } from '@plannotator/ui/utils/refCard';
 import { CompletionOverlay } from '@plannotator/ui/components/CompletionOverlay';
-import { useStarAskDoneScreen } from '@plannotator/ui/components/StarAskDoneScreen';
 import {
   closePendingTab,
   openPendingTab,
@@ -63,10 +60,6 @@ import { useAIProviderConfig } from '@plannotator/ui/hooks/useAIProviderConfig';
 import { useAIProviderActivation } from '@plannotator/ui/hooks/useAIProviderActivation';
 import { isSessionBridgeProvider } from '@plannotator/ui/utils/aiProvider';
 import type { SessionAskAction } from '@plannotator/ui/components/ai/SessionAskNotice';
-import {
-  isVSCodeWebview,
-} from '@plannotator/ui/utils/inboxAnnouncement';
-import { askSessionSetupHint } from '@plannotator/ui/utils/askSessionSetupHint';
 import { useAgentToolSetting } from '@plannotator/ui/hooks/useAgentToolSetting';
 import { CodeAnnotation, CodeAnnotationType, SelectedLineRange, TokenAnnotationMeta, ConventionalLabel, ConventionalDecoration, Annotation, CommentAnnotation, AgentJobInfo, type ArtifactAnnotationMeta, type CallFlowAnnotationTarget, type ImageAttachment, type MarkdownPreviewAnchor } from '@plannotator/ui/types';
 import type { CommentAskAIHandler } from '@plannotator/ui/components/CommentPopover';
@@ -106,7 +99,6 @@ import { callTreeHunkTargets as callTreeHunkTargetsFor, type CallTreeHunkTarget 
 import { CallTreeHunkEntry } from './components/callTree/CallTreeHunkEntry';
 import { selectionForCallFlowNode } from './components/CallFlowTreeView';
 import type { HostLineNote } from './components/hostLineNotes';
-import { useLiveReview } from './live/useLiveReview';
 import {
   shouldHandleReviewSearchShortcut,
   eventOrigin,
@@ -685,12 +677,13 @@ const ReviewApp: React.FC = () => {
     });
   }, []);
   const [origin, setOrigin] = useState<Origin | null>(null);
+  const [isApiMode, setIsApiMode] = useState(false);
   // Unknown until /api/diff responds. Keeping this tri-state prevents provider
   // discovery from starting before the server reports that AI is enabled.
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const aiUIEnabled = aiEnabled === true;
   // With AI off, the Guide stays for the saved guides (read only: no launch).
-  const hasSavedGuides = useHasSavedGuides(aiEnabled === false && !!origin);
+  const hasSavedGuides = useHasSavedGuides(aiEnabled === false && isApiMode);
   const guideReachable = aiUIEnabled || hasSavedGuides;
   const guideVisible = guideReachable && guideOpen;
   const [gitUser, setGitUser] = useState<string | undefined>();
@@ -914,7 +907,7 @@ const ReviewApp: React.FC = () => {
   const { prMetadata, prStackInfo, prStackTree, prDiffScope, prDiffScopeOptions, prPatchIncomplete, prPatchUpgradeAvailable, updatePRSession } = usePRSession();
   const { status: reviewProgressStatus, persistViewed, flush: flushReviewProgress } = useReviewProgress({
     snapshotId, contextKey: JSON.stringify([prMetadata?.url, committedBase]),
-    enabled: !!origin, setViewedFiles, setSuppressedFiles: setAutoViewSuppressed,
+    enabled: isApiMode, setViewedFiles, setSuppressedFiles: setAutoViewSuppressed,
   });
   const navigatorOpenedOnLoad = useRef(false);
   useEffect(() => {
@@ -1056,7 +1049,6 @@ const ReviewApp: React.FC = () => {
   // "new version available" toast is then redundant and stays hidden.
   const [autoUpdateActive, setAutoUpdateActive] = useState(false);
   // The update-notice switch for Settings: present when the server reports it.
-  const updateCheckSetting = useUpdateCheckSetting();
   const cookieHostSetting = useCookieHostSetting();
   const packageChangesSetting = usePackageChangesSetting();
   // One-time notice after a background auto-update (#1634); the compiled
@@ -1091,19 +1083,14 @@ const ReviewApp: React.FC = () => {
   const { editorAnnotations, deleteEditorAnnotation } = useEditorAnnotations();
 
   // External annotations (SSE-based, for any external tool)
-  // TODO: Replace !!origin with a dedicated isApiMode boolean (set on /api/diff success/failure).
-  // origin is an identity field, not a connectivity signal — the standalone dev server
-  // (apps/review/) doesn't set it, so external annotations are silently disabled there.
-  // The same !!origin proxy is used elsewhere in this file (draft hook, feedback guard, conditional UI)
-  // so this should be addressed as a broader refactor.
   const { externalAnnotations, updateExternalAnnotation, deleteExternalAnnotation } = useExternalAnnotations<CodeAnnotation>({
-    enabled: !!origin,
+    enabled: isApiMode,
     onSessionClosed: (event) => {
       setAgentClosed(event);
       setSubmitted((current) => current || 'exited');
     },
   });
-  const agentJobs = useAgentJobs({ enabled: !!origin && aiUIEnabled });
+  const agentJobs = useAgentJobs({ enabled: isApiMode && aiUIEnabled });
   const agentFindingSourcesKey = agentJobs.jobs.map((job) => job.source).sort().join('\0');
   const agentFindingSources = useMemo(
     () => new Set(agentFindingSourcesKey ? agentFindingSourcesKey.split('\0') : []),
@@ -1410,7 +1397,7 @@ const ReviewApp: React.FC = () => {
     commentAnnotations,
     viewedFiles,
     autoViewSuppressed,
-    isApiMode: !!origin,
+    isApiMode,
     submitted: !!submitted,
     onDraftTargetMerge: (items) => draftTargetMergeRef.current(items),
     // Only once the diff snapshot is known and progress support is settled:
@@ -2454,11 +2441,11 @@ const ReviewApp: React.FC = () => {
   // guide takeover shows the demo fixture so the UI can be iterated on without
   // a live agent run.
   useEffect(() => {
-    if (import.meta.env.DEV && guideOpen && !origin && !activeGuideJobId) {
+    if (import.meta.env.DEV && guideOpen && !isApiMode && !activeGuideJobId) {
       setGuideRevealFile(null); // same-batch clear — see handleOpenGuide
       setActiveGuideJobId(DEMO_GUIDE_ID);
     }
-  }, [guideOpen, origin, activeGuideJobId]);
+  }, [guideOpen, isApiMode, activeGuideJobId]);
 
   // Open the combined PR overview (summary + checks + comments) as a center dock panel
   const openPROverviewPanel = useCallback(() => {
@@ -2883,7 +2870,6 @@ const ReviewApp: React.FC = () => {
         setAutoUpdateNotice(parseAutoUpdateNotice(data.autoUpdateNotice));
         setUpdateAdvert(parseUpdateAdvert(data.updateAvailable));
         setUpdateCheckFailing(parseUpdateCheckFailing(data.updateCheckFailing));
-        updateCheckSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         cookieHostSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         adoptPackageChangesConfig(data.serverConfig as Record<string, unknown> | undefined);
         primeImageSizes(data.snapshotId, data.imageSizes);
@@ -2904,6 +2890,7 @@ const ReviewApp: React.FC = () => {
           callFlow: data.callFlow,
         });
         setFiles(apiFiles);
+        setIsApiMode(true);
         setReviewMode(data.mode ?? null);
         setWorkspaceDiffOptions(data.mode === 'workspace' ? (data.diffOptions ?? []) : null);
         if (data.origin) setOrigin(data.origin);
@@ -2933,10 +2920,6 @@ const ReviewApp: React.FC = () => {
         // Session-constant: a static patch session has no diff-type switch to
         // re-advertise it on, so `/api/diff` is the only place it can arrive.
         setSourceKind(data.sourceKind === 'patch' ? 'patch' : 'vcs');
-        // Hover cards for issue, PR and MR links (ui RefHoverCard): the server reads them with this
-        // computer's gh / glab (GET /api/ref, ref-cards.ts). Only once a server answered; never in
-        // the demo. A card shows only when the forge answered (`onlyWithData` below).
-        setRefCardTransport(refCardRouteTransport('/api/ref'));
         if (data.repoInfo) setRepoInfo(data.repoInfo);
         if (typeof data.title === 'string' && data.title) setSessionTitle(data.title);
         updatePRSession({
@@ -3400,19 +3383,11 @@ const ReviewApp: React.FC = () => {
       });
     }
   }, [deleteExternalAnnotation, externalAnnotations, reviewHistory]);
-  const livePR = useMemo(() => (prMetadata ? { forge: prMetadata.platform === 'gitlab' ? 'GitLab' : prMetadata.platform === 'bitbucket' ? 'Bitbucket' : 'GitHub', platform: prMetadata.platform, threads: prContext?.reviewThreads ?? null, load: () => void fetchPRContext() } : null), [prMetadata, prContext, fetchPRContext]);
-  const revealLiveLines = useCallback((filePath: string, start: number, end: number, side: 'old' | 'new') => {
-    handleScrollToAILines(filePath, start, end, side);
-    window.setTimeout(() => setPendingSelection((current) => (current && current.start === start && current.end === end ? null : current)), 900);
-  }, [handleScrollToAILines]);
-  const dropSentComments = useCallback((ids: readonly string[]) => ids.forEach((id) => handleDeleteAnnotation(id)), [handleDeleteAnnotation]);
-  const restoreTakenComments = useCallback((back: CodeAnnotation[]) => setAnnotations((current) => [...current, ...back.filter((c) => !current.some((a) => a.id === c.id))]), []);
-  const liveReview = useLiveReview({ files, annotations, dropAnnotations: prMetadata ? null : dropSentComments, restoreAnnotations: restoreTakenComments, revealLines: revealLiveLines, openTab: reviewSidebar.open, pr: livePR });
   const sidebarExtraTabs = useMemo(
-    () => [...(liveReview.tab ? [liveReview.tab] : []), ...(referencesTab ? [referencesTab] : [])],
-    [liveReview.tab, referencesTab],
+    () => referencesTab ? [referencesTab] : [],
+    [referencesTab],
   );
-  const hostNotes = useMemo(() => (liveReview.notes.length > 0 ? [...callTreeHunkNotes, ...liveReview.notes] : callTreeHunkNotes), [callTreeHunkNotes, liveReview.notes]);
+  const hostNotes = callTreeHunkNotes;
 
   // Handle identity change - update author on existing annotations
   const handleIdentityChange = useCallback((oldIdentity: string, newIdentity: string) => {
@@ -4148,7 +4123,7 @@ const ReviewApp: React.FC = () => {
   // the pieces it owns — visibility, the active commit, switch state, and the
   // open-a-commit path (the SAME one user clicks take).
   const commitsView = useCommitsView({
-    enabled: showCommitsPanel && !!origin,
+    enabled: showCommitsPanel && isApiMode,
     // Worktree and base changes re-anchor the history/divider; commit clicks
     // deliberately don't (paging state survives them).
     contextKey: `${activeWorktreePath ?? ''}|${committedBase ?? ''}`,
@@ -4254,13 +4229,13 @@ const ReviewApp: React.FC = () => {
   // Preserves the active file since only whitespace hunks change.
   const hideWhitespaceInitialized = useRef(false);
   useEffect(() => {
-    if (!origin || (!gitContext && reviewMode !== 'workspace')) return;
+    if (!isApiMode || (!gitContext && reviewMode !== 'workspace')) return;
     if (!hideWhitespaceInitialized.current) {
       hideWhitespaceInitialized.current = true;
       return;
     }
     fetchDiffSwitch(diffType, selectedBase, { preserveFile: true });
-  }, [diffHideWhitespace, origin, reviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [diffHideWhitespace, isApiMode, reviewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Diff staleness ---------------------------------------------------------
   // Files changing mid-review (an agent editing/committing while the user
@@ -4271,7 +4246,7 @@ const ReviewApp: React.FC = () => {
   const diffFreshness = useDiffFreshness({
     // Static patch: the bytes are the session. Nothing can go stale, so the
     // probe would only poll an endpoint with no fingerprint to compare.
-    enabled: !!origin && !isStaticPatch,
+    enabled: isApiMode && !isStaticPatch,
     resetKey: diffData?.rawPatch ?? '',
     snapshotId,
     onAgentCwd: setAgentCwd,
@@ -4576,7 +4551,7 @@ const ReviewApp: React.FC = () => {
   }, [files, handleFileSwitch, prMetadata, prDiffScope, guideOpen, openCallFlowPanel, handleFileViewChange, openRepoFile]);
 
   const agentsPanel = useAgentsPanelSlots({
-    enabled: !!origin && agentJobs.capabilities?.available === true,
+    enabled: isApiMode && agentJobs.capabilities?.available === true,
     prMode: !!prMetadata,
     contextKey: `${prMetadata?.url ?? ''}|${activeWorktreePath ?? ''}|${gitContext?.currentBranch ?? ''}`,
     jobs: agentJobs.jobs,
@@ -5510,14 +5485,6 @@ const ReviewApp: React.FC = () => {
     },
   });
 
-  // The "Star the repo" ask (approval "star-ask"): claimed once the page loads (the server stops on the decision),
-  // shown on the done screen only, once a decision was sent (approved or feedback; never a closed session), never in
-  // the VS Code webview or without a live session. The server decides the rest.
-  const starAskFooter = useStarAskDoneScreen({
-    ready: !isLoading,
-    decided: submitted === 'approved' || submitted === 'feedback',
-    eligible: !!origin && !isVSCodeWebview(),
-  });
   // Explorer keys (the `review-explorer` scope): never over a dialog, the
   // guide, or while the review is settling; only Go to File works from a text
   // field (as in VS Code), every other key leaves typing alone.
@@ -5607,7 +5574,7 @@ const ReviewApp: React.FC = () => {
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (showExportModal || showNoAnnotationsDialog || showExitWarning) return;
       if (submitted || isSendingFeedback || isApproving || isExiting || isPlatformActioning) return;
-      if (!origin) return; // Demo mode
+      if (!isApiMode) return;
 
       e.preventDefault();
 
@@ -5635,7 +5602,7 @@ const ReviewApp: React.FC = () => {
     showExportModal, showNoAnnotationsDialog, showExitWarning,
     platformCommentDialog, platformGeneralComment,
     submitted, isSendingFeedback, isApproving, isExiting, isPlatformActioning,
-    origin, platformMode, runPlatformDecisionAction,
+    isApiMode, platformMode, runPlatformDecisionAction,
     submitPrimaryDecision, submitPlatformDialog
   ]);
 
@@ -5689,7 +5656,7 @@ const ReviewApp: React.FC = () => {
   );
 
   const compactReviewDestination: CompactReviewDestination | undefined =
-    isCompactTouchLayout && origin && prMetadata
+    isCompactTouchLayout && isApiMode && prMetadata
       ? {
           value: reviewDestination,
           platform: prMetadata.platform,
@@ -5716,7 +5683,7 @@ const ReviewApp: React.FC = () => {
   const patchHasDiffHeaders = /^(diff --git |--- |\+\+\+ |@@ |Index: )/m.test(diffData?.rawPatch ?? '');
   const compactReviewActions: CompactReviewAction[] = !isCompactTouchLayout
     ? []
-    : !origin
+    : !isApiMode
       ? [{
           id: 'copy',
           label: copyFeedback === 'Feedback copied!' ? 'Feedback copied' : 'Copy feedback',
@@ -6044,7 +6011,7 @@ const ReviewApp: React.FC = () => {
             ? 'contents'
             : 'min-w-0 w-full min-[480px]:w-auto flex flex-wrap min-[480px]:flex-nowrap shrink-0 items-center justify-end gap-1 lg:gap-2'
           }>
-            {!isCompactTouchLayout && (origin ? (
+            {!isCompactTouchLayout && (isApiMode ? (
               <>
                 {/* Destination dropdown (PR mode only) */}
                 {prMetadata && (
@@ -6253,7 +6220,7 @@ const ReviewApp: React.FC = () => {
               isFileTreeOpen={isNavigatorOpen}
               isSidebarOpen={reviewSidebar.isOpen}
               compactTouchLayout={isCompactTouchLayout}
-              agentInstructionsEnabled={!!origin}
+              agentInstructionsEnabled={isApiMode}
               appVersion={appVersion}
               updateInfo={updateInfo}
               origin={origin}
@@ -6467,7 +6434,6 @@ const ReviewApp: React.FC = () => {
                 </div>
               </div>
             )}
-            {liveReview.overlay}
             <ConfirmDialog
               isOpen={!!draftBanner}
               onClose={dismissDraft}
@@ -6603,7 +6569,6 @@ const ReviewApp: React.FC = () => {
                 {...(hasSessionBridge && {
                   onSessionAskAction: handleSessionAskAction,
                 })}
-                askSessionSetupHint={askSessionSetupHint(origin, aiProviders)}
                 agentJobs={agentJobs.jobs}
                 agentCapabilities={agentJobs.capabilities}
                 onAgentLaunch={agentJobs.launchJob}
@@ -6669,7 +6634,6 @@ const ReviewApp: React.FC = () => {
             aiProviders={aiProviders}
             gitUser={gitUser}
             autoUpdateSetting={autoUpdateSetting}
-            updateCheckSetting={updateCheckSetting.setting}
             cookieHostSetting={cookieHostSetting.setting}
             packageChangesSetting={packageChangesSetting}
             agentToolSetting={agentTool.setting}
@@ -6773,11 +6737,10 @@ const ReviewApp: React.FC = () => {
                   ? `Your approval was submitted to ${platformLabel}.`
                   : `Your feedback was submitted to ${platformLabel}.`
                 : submitted === 'approved'
-                  ? `${getAgentName(origin)} will proceed with the changes.`
-                  : `${getAgentName(origin)} will address your review feedback.`
+                  ? 'The approval was returned to the CLI.'
+                  : 'Your feedback was returned to the CLI.'
           }
           agentLabel={getAgentName(origin)}
-          footer={starAskFooter}
           links={platformMode && submitted !== 'exited'
             ? platformPostedUrls.map((href) => ({
               href,

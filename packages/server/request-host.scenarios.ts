@@ -24,7 +24,7 @@ export interface HostScenarioServer {
   stop: () => void;
 }
 
-export type HostScenarioKind = "plan" | "review" | "annotate";
+export type HostScenarioKind = "review" | "annotate";
 
 export type StartHostScenarioServer = (
   kind: HostScenarioKind,
@@ -36,14 +36,12 @@ const EVIL = "evil.example";
 
 /** The JSON read each kind's page loads first. */
 const FIRST_READ: Record<HostScenarioKind, string> = {
-  plan: "/api/plan",
   annotate: "/api/plan",
   review: "/api/diff",
 };
 
 /** The decision endpoint each kind takes. */
 const DECISION: Record<HostScenarioKind, string> = {
-  plan: "/api/approve",
   annotate: "/api/feedback",
   review: "/api/feedback",
 };
@@ -92,7 +90,7 @@ export function defineRequestHostScenarios(runtime: string, start: StartHostScen
   const get = (server: HostScenarioServer, path: string, host: string) =>
     rawRequest(`${loopbackBase(server)}${path}`, { headers: { host } });
 
-  for (const kind of ["plan", "review", "annotate"] as const) {
+  for (const kind of ["review", "annotate"] as const) {
     describe(`${runtime} ${kind} server: Host allowlist`, () => {
       test("loopback Hosts are answered, a foreign name is refused on every route", async () => {
         await isolate();

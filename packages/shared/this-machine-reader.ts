@@ -11,19 +11,17 @@
  *  - the Host is a loopback or `*.localhost` name, and so is any
  *    `X-Forwarded-Host`;
  *  - no `Forwarded` or `X-Real-IP` header, no `tailscale serve` header, and
- *    any `X-Forwarded-For` lists only loopback (`cameThroughTailscaleServe`).
+ *    any `X-Forwarded-For` lists only loopback.
  * Every other reader keeps the session's roots. A raw TCP forwarder, a VS
  * Code dev tunnel (no variable it is known to set marks it), or a proxy that
  * rewrites Host to loopback and adds none of these headers, looks local:
  * remote setups use remote mode. Cross-site pages are refused by the routes
  * before this.
  *
- * Runtime-agnostic (vendored to Pi as generated/this-machine-reader.ts).
  */
 
-import { isLocalhostSubdomain, isLoopbackHostname } from "./loopback-host";
+import { isLocalhostSubdomain, isLoopbackForwardedFor, isLoopbackHostname } from "./loopback-host";
 import { ALLOWED_HOSTS_ENV } from "./request-host";
-import { cameThroughTailscaleServe } from "./tailnet-audience";
 
 /** A Host-shaped value naming this machine: a loopback or `*.localhost` name. */
 function isLocalHostName(hostHeader: string | null): boolean {
@@ -53,5 +51,7 @@ export function isThisMachineReader(remote: boolean, headers: Headers): boolean 
 	if (!isLocalHostName(headers.get("host"))) return false;
 	if (headers.has("x-forwarded-host") && !isLocalHostName(headers.get("x-forwarded-host"))) return false;
 	if (headers.has("forwarded") || headers.has("x-real-ip")) return false;
-	return !cameThroughTailscaleServe(headers);
+	if (["tailscale-user-login", "tailscale-headers-info", "tailscale-funnel-request"].some((name) => headers.has(name))) return false;
+	const forwardedFor = headers.get("x-forwarded-for");
+	return forwardedFor === null || isLoopbackForwardedFor(forwardedFor);
 }

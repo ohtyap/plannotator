@@ -25,10 +25,8 @@ export type StartBundleScenarioServer = (options: {
   mode?: "annotate" | "annotate-bundle";
   bundleFiles?: AnnotateBundleFile[];
   project?: string;
-  hostControlToken?: string;
 }) => Promise<BundleScenarioServer>;
 
-const HOST_TOKEN = "annotate-bundle-scenarios-host-token-0123456789abcdef";
 
 const ENV_KEYS = [
   "PLANNOTATOR_DATA_DIR",
@@ -99,14 +97,13 @@ export function defineAnnotateBundleScenarios(runtime: string, start: StartBundl
       { path: flow, renderAs: "mermaid" },
     ];
 
-    async function openBundle(hostControlToken?: string): Promise<BundleScenarioServer> {
+    async function openBundle(): Promise<BundleScenarioServer> {
       const server = await start({
         markdown: "",
         filePath: join(root, "work"),
         mode: "annotate-bundle",
         bundleFiles: files(),
         project: "bundle-scenarios",
-        ...(hostControlToken ? { hostControlToken } : {}),
       });
       servers.push(server);
       return server;
@@ -157,13 +154,6 @@ export function defineAnnotateBundleScenarios(runtime: string, start: StartBundl
       // Outside every root: served to this machine (#2291); doc-any-path.scenarios.ts
       // covers the readers that keep the roots.
       expect((await doc(server, outside)).status).toBe(200);
-    });
-
-    test("the host's status lists the bundle's files in order", async () => {
-      const server = await openBundle(HOST_TOKEN);
-      const status = await fetch(`${server.url}/api/host/status`, { headers: { Authorization: `Bearer ${HOST_TOKEN}` } });
-      expect(status.status).toBe(200);
-      expect((await status.json()).documents).toEqual([mock, spec, flow]);
     });
 
     // The failure: the CLI accepts a symlinked file, then /api/doc refuses

@@ -1,8 +1,0 @@
-revision: P-1
-scope: inside
-title: Add one part
-add:
-  parts:
-    first: { in: inside, name: First part, kind: service }
-  place:
-    L-101: { first: { band: empty } }

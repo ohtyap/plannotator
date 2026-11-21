@@ -57,7 +57,6 @@ import { ConfirmDialog } from '@plannotator/ui/components/ConfirmDialog';
 import { Annotation, AnnotationType, Block, EditorMode, type CodeAnnotation, type DocumentRenderAs, type InputMethod, type ImageAttachment, type ActionsLabelMode } from '@plannotator/ui/types';
 import { ThemeProvider } from '@plannotator/ui/components/ThemeProvider';
 import { RefHoverCards } from '@plannotator/ui/components/RefHoverCard';
-import { refCardRouteTransport, setRefCardTransport } from '@plannotator/ui/utils/refCard';
 import { Tooltip, TooltipProvider } from '@plannotator/ui/components/Tooltip';
 import { AnnotationToolstrip } from '@plannotator/ui/components/AnnotationToolstrip';
 import { StickyHeaderLane } from '@plannotator/ui/components/StickyHeaderLane';
@@ -74,10 +73,8 @@ import { getIdentity } from '@plannotator/ui/utils/identity';
 import { copyTextToClipboard } from '@plannotator/ui/utils/clipboard';
 import { configStore, useConfigValue } from '@plannotator/ui/config';
 import { CompletionOverlay } from '@plannotator/ui/components/CompletionOverlay';
-import { useStarAskDoneScreen } from '@plannotator/ui/components/StarAskDoneScreen';
 import { useUpdateCheck } from '@plannotator/ui/hooks/useUpdateCheck';
 import { useUpdateToast } from '@plannotator/ui/hooks/useUpdateToast';
-import { useUpdateCheckSetting } from '@plannotator/ui/hooks/useUpdateCheckSetting';
 import { useCookieHostSetting } from '@plannotator/ui/hooks/useCookieHostSetting';
 import { parseUpdateAdvert, parseUpdateCheckFailing, type UpdateAdvert, type UpdateCheckFailingAdvert } from '@plannotator/ui/utils/updateNotice';
 import { claimAutoUpdateNotice, describeAutoUpdateNotice, parseAutoUpdateNotice, type AutoUpdateNotice } from '@plannotator/ui/utils/autoUpdateNotice';
@@ -104,37 +101,6 @@ import { useDocumentFont } from '@plannotator/ui/hooks/useDocumentFont';
 import { useDocumentSourceLineNumbers } from '@plannotator/ui/hooks/useDocumentSourceLineNumbers';
 import { useAIProviderActivation } from '@plannotator/ui/hooks/useAIProviderActivation';
 import { usePlanLookDialog } from '@plannotator/ui/hooks/usePlanLookDialog';
-import { TerminalToolsAnnouncementDialog } from '@plannotator/ui/components/TerminalToolsAnnouncementDialog';
-import {
-  markTerminalToolsAnnouncementSeen,
-  needsTerminalToolsAnnouncement,
-  terminalToolsAnnouncementCanShow,
-} from '@plannotator/ui/utils/terminalToolsAnnouncement';
-import { InboxAnnouncementDialog } from '@plannotator/ui/components/InboxAnnouncementDialog';
-import {
-  inboxAnnouncementEligible,
-  isVSCodeWebview,
-  markInboxAnnouncementSeen,
-  needsInboxAnnouncement,
-} from '@plannotator/ui/utils/inboxAnnouncement';
-import { AskSessionAnnouncementDialog } from '@plannotator/ui/components/AskSessionAnnouncementDialog';
-import {
-  askSessionAnnouncementEligible,
-  askSessionAnnouncementPendingThisLoad,
-  connectedAskSessionAgent,
-  markAskSessionAnnouncementSeen,
-} from '@plannotator/ui/utils/askSessionAnnouncement';
-import { askSessionSetupHint } from '@plannotator/ui/utils/askSessionSetupHint';
-import { useFirstRunAnnouncementWindow } from '@plannotator/ui/hooks/useFirstRunAnnouncementWindow';
-import { AgentToolAnnouncementDialog } from '@plannotator/ui/components/AgentToolAnnouncementDialog';
-import {
-  agentToolAnnouncementEligible,
-  agentToolAnnouncementPendingThisLoad,
-  agentToolOfferHostOf,
-  markAgentToolAnnouncementSeen,
-} from '@plannotator/ui/utils/agentToolAnnouncement';
-import { useAgentToolSetting } from '@plannotator/ui/hooks/useAgentToolSetting';
-import { useLatchedTrue } from '@plannotator/ui/hooks/useLatchedTrue';
 import { buildDefaultPrompt, draftAnnotationsToSend, useAIChat } from '@plannotator/ui/hooks/useAIChat';
 import { askScopeFromContext as askScopeFromContextFor } from './askScope';
 import { getUIPreferences, type UIPreferences, type PlanWidth } from '@plannotator/ui/utils/uiPreferences';
@@ -189,7 +155,6 @@ import { buildPlanAgentInstructions } from '@plannotator/ui/utils/planAgentInstr
 import { buildAnnotateAgentInstructions, resolveAnnotateInstructionsSurface } from '@plannotator/ui/utils/annotateAgentInstructions';
 import { useFileBrowser, type DirState } from '@plannotator/ui/hooks/useFileBrowser';
 import { getFileEditStatus } from '@plannotator/ui/components/sidebar/FileBrowser';
-import { isVaultBrowserEnabled } from '@plannotator/ui/utils/obsidian';
 import { isFileBrowserEnabled, getFileBrowserSettings } from '@plannotator/ui/utils/fileBrowser';
 import { generateId } from '@plannotator/ui/utils/generateId';
 import { SidebarTabs } from '@plannotator/ui/components/sidebar/SidebarTabs';
@@ -278,9 +243,6 @@ import { useLiveAnnotateVersion, type LiveAnnotateVersion } from './hooks/useLiv
 import { useHtmlRefresh, type HtmlRefreshedDocument } from './hooks/useHtmlRefresh';
 import { useAnnotationJump } from './hooks/useAnnotationJump';
 import { planRevisionBlocker, usePlanRevisions, type PlanRevisionSnapshot } from './hooks/usePlanRevisions';
-import { AgentNudgeBanner } from './components/AgentNudgeBanner';
-import { useDocumentWebMcp } from './webmcp/useDocumentWebMcp';
-import { useWebMcpActivity } from '@plannotator/ui/webmcp';
 import type { CompactPlanAction } from '@plannotator/ui/components/PlanHeaderMenu';
 import { FolderAnnotationEmptyState } from './components/FolderAnnotationEmptyState';
 import { CompactAnnotationControls } from './components/CompactAnnotationControls';
@@ -298,10 +260,7 @@ import {
   toggleCompactPlanNavigator,
   type CompactPlanSurface,
 } from './compactPlanSurface';
-import {
-  AnnotateAgentTerminalPanel,
-  type AnnotateAgentTerminalPanelHandle,
-} from './components/AnnotateAgentTerminalPanel';
+import type { AnnotateAgentTerminalPanelHandle } from './components/AnnotateAgentTerminalPanel';
 import {
   saveAnnotateAgentTerminalSide,
   type AnnotateAgentTerminalSide,
@@ -664,10 +623,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isApiMode) primeSkillCatalog();
   }, [isApiMode]);
-  // Hover cards for issue, PR and MR links (ui RefHoverCard): the server reads them with this
-  // computer's gh / glab (GET /api/ref, ref-cards.ts). Only when a Plannotator server serves
-  // the page, never on a share link. A card shows only when the forge answered (`onlyWithData`).
-  // (The transport is installed further down, once `isSharedSession` exists.)
   const refCardRootRef = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState<Origin | null>(null);
   const [gitUser, setGitUser] = useState<string | undefined>();
@@ -684,7 +639,6 @@ const App: React.FC = () => {
   // "new version available" toast is then redundant and stays hidden.
   const [autoUpdateActive, setAutoUpdateActive] = useState(false);
   // The update-notice switch for Settings: present when the server reports it.
-  const updateCheckSetting = useUpdateCheckSetting();
   const cookieHostSetting = useCookieHostSetting();
   // One-time notice after a background auto-update (#1634); the compiled
   // CLI's server attaches it to the initial payload.
@@ -912,29 +866,6 @@ const App: React.FC = () => {
     open: showLookAndFeelAnnouncement,
     dismiss: dismissLookAndFeelAnnouncement,
   } = usePlanLookDialog(gridEnabled);
-  // One-time terminal-tools announcement (Plannotator TUI + Herdr Annotate),
-  // shared with the code review editor through one cookie. Latched at mount:
-  // the dismiss writes the cookie, and re-reading it per render would unmount
-  // the dialog under its own click handler.
-  const [terminalToolsIntroPending, setTerminalToolsIntroPending] = useState(
-    needsTerminalToolsAnnouncement,
-  );
-  // One-time Plannotator Inbox announcement, after the terminal-tools one
-  // (never on the same load). Latched at mount for the same reason.
-  const [inboxIntroPending, setInboxIntroPending] = useState(needsInboxAnnouncement);
-  // One-time "Ask this session" announcement, after the terminal-tools one
-  // (never on the same load). Latched at mount for the same reason.
-  const [askSessionIntroPending, setAskSessionIntroPending] = useState(
-    askSessionAnnouncementPendingThisLoad,
-  );
-  // The `plannotator` agent tool switch (Settings row + one-time offer on Pi
-  // and OpenCode 2), from the server's serverConfig.
-  const agentTool = useAgentToolSetting();
-  // One-time offer to turn the agent tool on, after the terminal-tools
-  // announcement (never on the same load). Latched at mount for the same reason.
-  const [agentToolIntroPending, setAgentToolIntroPending] = useState(
-    agentToolAnnouncementPendingThisLoad,
-  );
   const isMobile = useIsMobile();
   const isBelowAgentTerminalBreakpoint = useIsMobile(AGENT_TERMINAL_LG_BREAKPOINT);
   const isCompactTouchLayout = useCompactTouchLayout();
@@ -1290,34 +1221,6 @@ const App: React.FC = () => {
     setRightSidebarTab('annotations');
     setIsPanelOpen(prev => rightSidebarTab === 'annotations' ? !prev : true);
   }, [agentTerminalPlacement, exitWideMode, isAgentTerminalVisible, isCompactTouchLayout, openCompactPlanSurface, replaceRightAgentTerminalWithPanel, rightSidebarTab, wideModeType]);
-
-  const dismissTerminalToolsAnnouncement = useCallback(() => {
-    markTerminalToolsAnnouncementSeen();
-    setTerminalToolsIntroPending(false);
-  }, []);
-
-  const dismissInboxAnnouncement = useCallback(() => {
-    markInboxAnnouncementSeen();
-    setInboxIntroPending(false);
-  }, []);
-
-  const dismissAskSessionAnnouncement = useCallback(() => {
-    markAskSessionAnnouncementSeen();
-    setAskSessionIntroPending(false);
-  }, []);
-
-  const dismissAgentToolAnnouncement = useCallback(() => {
-    markAgentToolAnnouncementSeen();
-    setAgentToolIntroPending(false);
-  }, []);
-
-  // "Turn it on": the offer stays open to show the outcome, so only the
-  // cookie is written here; Done closes it.
-  const saveAgentTool = agentTool.save;
-  const turnOnAgentTool = useCallback(async () => {
-    await saveAgentTool(true);
-    markAgentToolAnnouncementSeen();
-  }, [saveAgentTool]);
 
   const handleAIChatToggle = useCallback(() => {
     if (isCompactTouchLayout) {
@@ -1779,14 +1682,11 @@ const App: React.FC = () => {
     }
   }, [canUseWideMode, exitWideMode, wideModeType]);
 
-  // Markdown file browser (also handles vault dirs via isVault flag)
+  // Browse local folders in the document sidebar.
   const fileBrowser = useFileBrowser();
-  const vaultPath = useMemo(() => {
-    if (!isVaultBrowserEnabled()) return '';
-    return getEffectiveVaultPath(getObsidianSettings());
-  }, [uiPrefs]);
+  const vaultPath = '';
   const showFilesTab = useMemo(
-    () => !!projectRoot || isFileBrowserEnabled() || isVaultBrowserEnabled(),
+    () => !!projectRoot || isFileBrowserEnabled(),
     [projectRoot, uiPrefs]
   );
 
@@ -2806,13 +2706,6 @@ const App: React.FC = () => {
     });
   }, [isLoading, isSharedSession]);
 
-  // Hover cards (see refCardRootRef above): the transport over GET /api/ref, only while a
-  // Plannotator server serves the page, never for a share link.
-  useEffect(() => {
-    if (!isApiMode || isSharedSession) return;
-    setRefCardTransport(refCardRouteTransport('/api/ref'));
-    return () => setRefCardTransport(null);
-  }, [isApiMode, isSharedSession]);
 
   // The user's current direct-edit text: the open editor buffer, else the
   // last commit; null when there is none or it matches the baseline. Never
@@ -4013,12 +3906,10 @@ const App: React.FC = () => {
         // Only the compiled CLI running the installer-managed binary offers the
         // toggle; OpenCode, Pi and dev runs send no autoUpdateSupported.
         setAutoUpdateSetting(data.autoUpdateSupported === true && typeof data.serverConfig?.autoUpdate === 'boolean' ? { env: data.serverConfig.autoUpdateEnv } : undefined);
-        agentTool.adopt(data.serverConfig);
         setAutoUpdateActive(data.autoUpdateActive === true);
         setAutoUpdateNotice(parseAutoUpdateNotice(data.autoUpdateNotice));
         setUpdateAdvert(parseUpdateAdvert(data.updateAvailable));
         setUpdateCheckFailing(parseUpdateCheckFailing(data.updateCheckFailing));
-        updateCheckSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         cookieHostSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         if (data.mode === 'goal-setup' && data.goalSetup) {
           setGoalSetupBundle(data.goalSetup);
@@ -4154,7 +4045,6 @@ const App: React.FC = () => {
         if (data.projectRoot) {
           setProjectRoot(data.projectRoot);
         }
-        setAgentTerminalCapability(data.agentTerminal ?? null);
         // Capture plan version history data
         if (data.previousPlan !== undefined) {
           setPreviousPlan(data.previousPlan);
@@ -4210,18 +4100,10 @@ const App: React.FC = () => {
     return () => stream.close();
   }, [annotateMode, isSharedSession, submitted, clientLease]);
 
-  // Which capabilities request has settled, keyed by the inputs that decide
-  // it: on the render where an input changes the key no longer matches, so
-  // nothing reads a stale "settled" (the agent tool offer waits on this to
-  // know whether the "Ask this session" announcement can still take the load).
-  const aiCapabilitiesKey = `${aiSessionEnabled}|${isApiMode}|${isSharedSession}|${origin}`;
-  const [aiCapabilitiesSettledKey, setAiCapabilitiesSettledKey] = useState<string | null>(null);
-  const aiCapabilitiesSettled = aiCapabilitiesSettledKey === aiCapabilitiesKey;
   useEffect(() => {
     if (!aiSessionEnabled || !isApiMode || isSharedSession) {
       setAiAvailable(false);
       setAiProviders([]);
-      setAiCapabilitiesSettledKey(aiCapabilitiesKey);
       return;
     }
 
@@ -4241,18 +4123,16 @@ const App: React.FC = () => {
           setAiAvailable(false);
           setAiProviders([]);
         }
-        setAiCapabilitiesSettledKey(aiCapabilitiesKey);
       })
       .catch(() => {
         if (!cancelled) {
           setAiAvailable(false);
           setAiProviders([]);
-          setAiCapabilitiesSettledKey(aiCapabilitiesKey);
         }
       });
 
     return () => { cancelled = true; };
-  }, [aiSessionEnabled, isApiMode, isSharedSession, origin, aiCapabilitiesKey]);
+  }, [aiSessionEnabled, isApiMode, isSharedSession]);
 
   // Auto-save to notes apps on plan arrival (each gated by its autoSave toggle)
   const autoSaveAttempted = useRef(false);
@@ -5521,66 +5401,6 @@ const App: React.FC = () => {
     );
   }, [applyCrossDocumentMutation, handleEditAnnotation]);
 
-  // WebMCP (browser-agent tools). The hook detects `document.modelContext`
-  // once and does nothing in a browser without it; the banner state below
-  // is only ever set by the agent's `nudge_user` tool.
-  const [agentNudge, setAgentNudge] = useState<{ key: number; message: string } | null>(null);
-  const showAgentNudge = useCallback((message: string) => {
-    setAgentNudge({ key: Date.now(), message });
-  }, []);
-  const webmcpActivity = useWebMcpActivity();
-  const webmcp = useDocumentWebMcp({
-    isApiMode,
-    isSharedSession,
-    goalSetupMode,
-    annotateMode,
-    annotateSource,
-    liveApp,
-    livePageUrl,
-    archiveMode: archive.archiveMode,
-    gate,
-    submitted,
-    renderAs,
-    rawHtml,
-    displayedMarkdown,
-    blocks,
-    allAnnotations,
-    isEditingMarkdown,
-    editorDiffersFromBaseline,
-    sourceStale: !!activeEditableDocument?.missingOnDisk || !!activeEditableDocument?.diskConflict,
-    sourceFilePath,
-    sourceInfo,
-    versionInfo,
-    linkedDoc: {
-      isActive: linkedDocHook.isActive,
-      filepath: linkedDocHook.filepath,
-      error: linkedDocHook.error,
-      getDocAnnotations: linkedDocHook.getDocAnnotations,
-      open: (path: string) => linkedDocHook.open(path),
-      cancelScrollRestore: linkedDocHook.cancelScrollRestore,
-    },
-    fileBrowserDirs: navigatorFileBrowser.dirs,
-    fileBrowserActiveFile: fileBrowser.activeFile,
-    openFolderFile: handleFileBrowserSelect,
-    viewerRef,
-    scrollViewport,
-    addAnnotation: (annotation) => {
-      annotationHistory.clear();
-      handleAddAnnotation(annotation);
-    },
-    editAnnotation: (id, patch) => {
-      annotationHistory.clear();
-      editAnnotationSilently(id, patch);
-    },
-    deleteAnnotation: (id) => {
-      annotationHistory.clear();
-      deleteAnnotationSilently(id);
-    },
-    selectAnnotation: handleSelectAnnotation,
-    showBanner: showAgentNudge,
-  });
-  const agentHasComments = allAnnotations.some((a) => a.source === 'browser-agent');
-
   const handleIdentityChange = useCallback((oldIdentity: string, newIdentity: string) => {
     if (documentReadOnly) return;
     annotationHistory.clear();
@@ -6290,23 +6110,10 @@ const App: React.FC = () => {
       e.preventDefault();
 
       const defaultApp = getDefaultNotesApp();
-      const obsOk = isObsidianConfigured();
-      const bearOk = getBearSettings().enabled;
-      const octOk = isOctarineConfigured();
-      const notionOk = isNotionConfigured();
-
       if (defaultApp === 'download') {
         handleDownloadAnnotations();
-      } else if (defaultApp === 'obsidian' && obsOk) {
-        handleQuickSaveToNotes('obsidian');
-      } else if (defaultApp === 'bear' && bearOk) {
-        handleQuickSaveToNotes('bear');
-      } else if (defaultApp === 'octarine' && octOk) {
-        handleQuickSaveToNotes('octarine');
-      } else if (defaultApp === 'notion' && notionOk) {
-        handleQuickSaveToNotes('notion');
       } else {
-        setInitialExportTab('notes');
+        setInitialExportTab('annotations');
         setShowExport(true);
       }
     };
@@ -7094,36 +6901,6 @@ const App: React.FC = () => {
     return widths[uiPrefs.planWidth] ?? 832;
   }, [uiPrefs.planWidth]);
   const annotateReaderMaxWidth = canUseWideMode && wideModeType === 'wide' ? null : planMaxWidth;
-  const agentTerminalPanel = shouldRenderAgentTerminal && agentTerminalCapability ? (
-    <div
-      key="agent-terminal"
-      className={agentTerminalDockClassName}
-      aria-hidden={!isAgentTerminalVisible}
-      inert={!isAgentTerminalVisible}
-    >
-      <AnnotateAgentTerminalPanel
-        ref={agentTerminalRef}
-        capability={agentTerminalCapability}
-        width={`var(--agent-terminal-w, ${agentTerminalResize.width}px)`}
-        side={agentTerminalSide}
-        placement={agentTerminalPlacement}
-        onSideChange={handleAgentTerminalSideChange}
-        onSessionActiveChange={setIsAgentTerminalRunning}
-        onSessionReadyChange={handleAgentTerminalReadyChange}
-        onClose={hideAgentTerminal}
-      />
-      {isAgentTerminalVisible && (
-        <ResizeHandle
-          {...agentTerminalResize.handleProps}
-          className="hidden lg:block z-[55]"
-          side={agentTerminalPlacement}
-          hideHoverTrack
-          tooltip={RESIZE_HANDLE_TOOLTIP}
-          onCollapse={hideAgentTerminal}
-        />
-      )}
-    </div>
-  ) : null;
   const canShowCollapsedSidebarTabs =
     !isCompactTouchLayout &&
     wideModeType === null &&
@@ -7146,102 +6923,6 @@ const App: React.FC = () => {
     !isSharedSession &&
     !goalSetupMode &&
     !showPermissionModeSetup;
-  // LAST in this app's first-run sequence: it asks for no decision, so it waits
-  // behind the look-and-feel chooser and the two setup flows. Archive browsing
-  // and a read-only shared plan have no one to address, so it is deferred there
-  // rather than consumed — and so is any session with no Plannotator server
-  // behind it (`!isApiMode`): the share portal's own root and the demo plan it
-  // renders never fetch /api/plan, and `isSharedSession` alone does not cover
-  // them. `isApiMode` is settled by the time `isLoading` clears, so this can
-  // never defer a real session.
-  const shouldShowTerminalToolsAnnouncement = terminalToolsAnnouncementCanShow({
-    announcementPending: terminalToolsIntroPending,
-    isLoading,
-    readOnlySession: isSharedSession || archive.archiveMode || !isApiMode,
-    compact: isCompactTouchLayout,
-    otherFirstRunDialogVisible:
-      shouldShowLookAndFeelAnnouncement || goalSetupMode || showPermissionModeSetup,
-  });
-  const terminalToolsShownThisLoad = useLatchedTrue(shouldShowTerminalToolsAnnouncement);
-  // The Plannotator Inbox announcement: after the terminal-tools one (never on
-  // the same load: that one takes the load while it is pending and can show
-  // here, i.e. not on the compact shell), before "Ask this session" and the
-  // agent-tool offer, which wait while this one takes the load. Shown on the
-  // compact shell too; never in the VS Code webview. Same first-run window.
-  const inboxEligibleNow = inboxAnnouncementEligible({
-    announcementPending: inboxIntroPending,
-    isLoading,
-    readOnlySession: isSharedSession || archive.archiveMode || !isApiMode,
-    vscodeWebview: isVSCodeWebview(),
-    otherFirstRunDialogVisible:
-      shouldShowLookAndFeelAnnouncement
-      || goalSetupMode
-      || showPermissionModeSetup
-      || shouldShowTerminalToolsAnnouncement,
-    earlierAnnouncementTakesThisLoad:
-      terminalToolsShownThisLoad || (terminalToolsIntroPending && !isCompactTouchLayout),
-  });
-  const showInboxAnnouncement = useFirstRunAnnouncementWindow({
-    pending: inboxIntroPending,
-    armed: !isLoading,
-    eligible: inboxEligibleNow,
-  });
-  const inboxShownThisLoad = useLatchedTrue(showInboxAnnouncement);
-  const inboxTakesThisLoad = inboxShownThisLoad || inboxEligibleNow;
-  // After the terminal-tools announcement, and only while this session is
-  // actually connected to its agent (Claude Code, Pi, OpenCode) and Ask AI is
-  // reachable here (not taken over by the annotate agent terminal). It may
-  // only open before the reader starts working (useFirstRunAnnouncementWindow);
-  // otherwise it waits for a later load. Same deferrals as the one above.
-  const askSessionAgent = connectedAskSessionAgent(aiProviders);
-  const askSessionEligibleNow = askSessionAnnouncementEligible({
-    announcementPending: askSessionIntroPending,
-    isLoading,
-    connectedAgent: askSessionAgent,
-    askAIUsable: canUseAI && !isAgentTerminalReady,
-    readOnlySession: isSharedSession || archive.archiveMode || !isApiMode,
-    compact: isCompactTouchLayout,
-    otherFirstRunDialogVisible:
-      shouldShowLookAndFeelAnnouncement
-      || goalSetupMode
-      || showPermissionModeSetup
-      || shouldShowTerminalToolsAnnouncement
-      || inboxTakesThisLoad,
-  });
-  const showAskSessionAnnouncement = useFirstRunAnnouncementWindow({
-    pending: askSessionIntroPending,
-    armed: !isLoading,
-    eligible: askSessionEligibleNow,
-  });
-  const askSessionShownThisLoad = useLatchedTrue(showAskSessionAnnouncement);
-  // LAST: the one-time offer to turn the `plannotator` agent tool on (Pi and
-  // OpenCode 2, where it is off by default). It waits while the "Ask this
-  // session" announcement can still take this load (its capabilities answer
-  // is outstanding, or it is eligible), so a reader never gets both on one
-  // load; one who is never connected still gets the offer. Same deferrals and
-  // the same first-run window as the others.
-  const showAgentToolAnnouncement = useFirstRunAnnouncementWindow({
-    pending: agentToolIntroPending,
-    armed: !isLoading,
-    eligible: agentToolAnnouncementEligible({
-      announcementPending: agentToolIntroPending,
-      isLoading,
-      setting: agentTool.setting,
-      readOnlySession: isSharedSession || archive.archiveMode || !isApiMode,
-      compact: isCompactTouchLayout,
-      otherFirstRunDialogVisible:
-        shouldShowLookAndFeelAnnouncement
-        || goalSetupMode
-        || showPermissionModeSetup
-        || shouldShowTerminalToolsAnnouncement
-        || showInboxAnnouncement
-        || showAskSessionAnnouncement,
-      earlierAnnouncementMayShow:
-        inboxTakesThisLoad
-        || askSessionShownThisLoad
-        || (askSessionIntroPending && (!aiCapabilitiesSettled || askSessionEligibleNow)),
-    }),
-  });
   // The update toast waits behind every first-run dialog of this load, and
   // never shows to a shared or archive session (useUpdateToast).
   useUpdateToast({
@@ -7250,26 +6931,10 @@ const App: React.FC = () => {
       isLoading
       || shouldShowLookAndFeelAnnouncement
       || goalSetupMode
-      || showPermissionModeSetup
-      || shouldShowTerminalToolsAnnouncement
-      || showInboxAnnouncement
-      || showAskSessionAnnouncement
-      || showAgentToolAnnouncement,
+      || showPermissionModeSetup,
     autoUpdateActive,
     suppressed: openedWithHash || isSharedSession || archive.archiveMode || !isApiMode,
   });
-  // The "Star the repo" ask (approval "star-ask"): claimed once the page loads (the server stops on the decision),
-  // shown on the done screen only, once a decision was sent (approved, feedback, done; never a closed session or goal
-  // setup's answers), with the announcements' gates (never a shared, archive or read-only page, the share portal, or
-  // the VS Code webview). The server decides the rest.
-  const starAskFooter = useStarAskDoneScreen({
-    ready: !isLoading,
-    decided: (submitted === 'approved' || submitted === 'denied' || submitted === 'done') && !goalSetupMode,
-    eligible: isApiMode && !goalSetupMode && !isSharedSession && !archive.archiveMode && !isVSCodeWebview(),
-  });
-  // Read from the host alone, not agentToolOfferApplies: once "Turn it on"
-  // succeeds the setting is on, and the open offer must stay to say so.
-  const agentToolOfferHost = agentToolOfferHostOf(agentTool.setting);
   const compactNavigatorTabs: SidebarTab[] = [
     ...(hasTocEntries ? ['toc' as const] : []),
     ...(!isHtmlSurface && activeDiffVersionInfo !== null && activeDiffVersionInfo.totalVersions > 1
@@ -7504,7 +7169,6 @@ const App: React.FC = () => {
       {...(hasSessionBridge && !isAgentTerminalReady && {
         onSessionAskAction: handleSessionAskAction,
       })}
-      askSessionSetupHint={isAgentTerminalReady ? null : askSessionSetupHint(origin, aiProviders)}
       onNewChat={isAgentTerminalReady ? undefined : startNewAIChat}
     />
   );
@@ -7598,14 +7262,9 @@ const App: React.FC = () => {
           mobileSettingsOpen={mobileSettingsOpen}
           gitUser={gitUser}
           autoUpdateSetting={autoUpdateSetting}
-          updateCheckSetting={updateCheckSetting.setting}
           cookieHostSetting={cookieHostSetting.setting}
-          agentToolSetting={agentTool.setting}
-          onAgentToolChange={agentTool.save}
           agentTerminalAvailable={showAgentTerminalControls}
-          webmcpAvailable={webmcp.available}
           documentTextSizeAvailable={renderAs === 'markdown' || renderAs === 'asciidoc' || renderAs === 'code'}
-          agentConnected={webmcpActivity.calls > 0}
           onCallbackFeedback={handleCallbackFeedback}
           onCallbackApprove={handleCallbackApprove}
           onAnnotateExit={handleHeaderAnnotateExit}
@@ -7634,11 +7293,11 @@ const App: React.FC = () => {
           appVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'}
           updateInfo={updateInfo}
           isWSL={isWSL}
-          agentInstructionsEnabled={isApiMode && !archive.archiveMode && !goalSetupMode}
-          obsidianConfigured={notesSaveAvailable && isObsidianConfigured()}
-          bearConfigured={notesSaveAvailable && getBearSettings().enabled}
-          octarineConfigured={notesSaveAvailable && isOctarineConfigured()}
-          notionConfigured={notesSaveAvailable && isNotionConfigured()}
+          agentInstructionsEnabled={false}
+          obsidianConfigured={false}
+          bearConfigured={false}
+          octarineConfigured={false}
+          notionConfigured={false}
         />
 
         {/* The provider is render-transparent (context only, no DOM), so it can
@@ -7758,7 +7417,6 @@ const App: React.FC = () => {
         <div data-print-region="content" className={`flex-1 flex ${usesDocumentScroll ? 'overflow-visible' : 'overflow-hidden'} relative z-0 ${isResizing ? 'select-none' : ''}`}>
           {/* Tater sprites — inside content wrapper so z-0 stacking context applies */}
           {taterMode && <TaterSpriteRunning />}
-          {showAgentTerminalOnLeft && agentTerminalPanel}
           {/* Left Sidebar: collapsed tab flags (when sidebar is closed) */}
           {canShowCollapsedSidebarTabs && (
             <SidebarTabs
@@ -8194,7 +7852,6 @@ const App: React.FC = () => {
             </div>
           </OverlayScrollArea>
 
-          {showAgentTerminalOnRight && agentTerminalPanel}
 
           {/* Right panel region — `group/sidebar` so the collapse button reveals when
               hovering the whole panel, not just the thin handle. The handle and the
@@ -8288,7 +7945,7 @@ const App: React.FC = () => {
           taterSprite={taterMode ? <TaterSpritePullup /> : undefined}
           sharingEnabled={canShareCurrentSession}
           markdown={markdown}
-          isApiMode={isApiMode && !documentReadOnly}
+          isApiMode={false}
           initialTab={initialExportTab}
           wrapCopiedAnnotations={wrapCopiedFeedback}
         />
@@ -8428,17 +8085,6 @@ const App: React.FC = () => {
           }}
         />
 
-        {/* Browser-agent nudge (WebMCP nudge_user): one transient banner,
-            rendered only while a message exists. */}
-        {agentNudge && (
-          <AgentNudgeBanner
-            key={agentNudge.key}
-            message={agentNudge.message}
-            onDismiss={() => setAgentNudge(null)}
-            onShowComments={agentHasComments && !isPanelOpen ? () => { setIsPanelOpen(true); setAgentNudge(null); } : undefined}
-          />
-        )}
-
         {/* Completion overlay - shown after approve/deny */}
         <CompletionOverlay
           submitted={submitted}
@@ -8482,7 +8128,6 @@ const App: React.FC = () => {
                     : `${agentName} will revise the plan based on your feedback.`
           }
           agentLabel={agentName}
-          footer={starAskFooter}
         />
 
         <LookAndFeelAnnouncementDialog
@@ -8493,40 +8138,6 @@ const App: React.FC = () => {
           onDismiss={dismissLookAndFeelAnnouncement}
         />
 
-        {/* One-time Plannotator TUI + Herdr Annotate announcement, shared with
-            the code review editor. Renders only once the look-and-feel chooser
-            and the setup flows are done, so the first-run dialogs never stack. */}
-        {shouldShowTerminalToolsAnnouncement && (
-          <TerminalToolsAnnouncementDialog
-            isOpen
-            onDismiss={dismissTerminalToolsAnnouncement}
-          />
-        )}
-
-        {/* One-time Plannotator Inbox announcement, shared with the code
-            review editor; after terminal tools, before "Ask this session". */}
-        {showInboxAnnouncement && (
-          <InboxAnnouncementDialog isOpen onDismiss={dismissInboxAnnouncement} />
-        )}
-
-        {/* One-time "Ask this session" announcement, last in the chain. */}
-        {showAskSessionAnnouncement && askSessionAgent && (
-          <AskSessionAnnouncementDialog
-            isOpen
-            agent={askSessionAgent}
-            onDismiss={dismissAskSessionAnnouncement}
-          />
-        )}
-
-        {/* One-time offer to turn the agent tool on (Pi, OpenCode 2), last. */}
-        {showAgentToolAnnouncement && agentToolOfferHost && (
-          <AgentToolAnnouncementDialog
-            isOpen
-            host={agentToolOfferHost}
-            onTurnOn={turnOnAgentTool}
-            onDismiss={dismissAgentToolAnnouncement}
-          />
-        )}
 
         {/* Image Annotator for pasted images */}
         <ImageAnnotator

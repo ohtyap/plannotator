@@ -293,8 +293,7 @@ const REVIEW_CURRENT_PROJECT_LINE = "To review the current project instead, run:
 
 /**
  * The refusal for a target that names nothing. People and agents both read
- * it, so it ends in commands that work as written: a close folder name when
- * one exists, `--diff-type` for a diff mode's name, a PR URL for a number.
+ * it, so it ends in commands that work as written.
  */
 function missingReviewFolderMessage(word: string, resolved: string, cwd: string): string {
   const lines = [
@@ -305,9 +304,6 @@ function missingReviewFolderMessage(word: string, resolved: string, cwd: string)
   const suggestions = suggestReviewFolders(word, cwd);
   if ((REVIEW_OPEN_DIFF_TYPES as readonly string[]).includes(word)) {
     lines.push(`To open the current project's ${word} diff, run: plannotator review --diff-type ${word}`);
-  } else if (/^#?\d+$/.test(word)) {
-    const number = word.replace("#", "");
-    lines.push(`To review pull request ${number}, pass its URL: plannotator review https://github.com/<owner>/<repo>/pull/${number}`);
   } else if (suggestions.length === 1) {
     lines.push(`Did you mean ${suggestions[0]}? Run: plannotator review ${shellWord(suggestions[0]!)}`);
   } else if (suggestions.length > 1) {

@@ -15,7 +15,7 @@ import {
   type GuideChangedFile,
 } from "@plannotator/shared/guide-prompt";
 import type { DiffType } from "../vcs";
-import { getPRPlatformCapabilities, type PRMetadata } from "../pr";
+import { getPRPlatformCapabilities, type PRMetadata } from "@plannotator/shared/pr-types";
 import type { WorkspaceReviewPromptContext } from "../agent-review-message";
 import {
   MARKER_ENGINES,
