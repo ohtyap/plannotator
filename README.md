@@ -4,6 +4,23 @@ Review local code changes or annotate documents in your browser. This fork of
 [Plannotator](https://github.com/backnotprop/plannotator) ships a standalone
 `plannotator` executable, not agent plugins or an Inbox.
 
+## Download for Linux
+
+Pick a version from [GitHub Releases](https://github.com/ohtyap/plannotator/releases) to pin the download. For example, on Linux ARM64:
+
+```sh
+version=v0.1.0
+asset=plannotator-linux-arm64  # use plannotator-linux-x64 on x86_64
+base="https://github.com/ohtyap/plannotator/releases/download/$version"
+curl -fLO "$base/$asset" &&
+  curl -fLO "$base/SHA256SUMS" &&
+  grep -F "  $asset" SHA256SUMS | sha256sum --check --strict &&
+  chmod +x "$asset" &&
+  "./$asset" --version
+```
+
+The executable runs on Linux; you can use a browser on another OS through an SSH tunnel.
+
 ## Build
 
 From the checkout, with [Bun](https://bun.sh/) 1.4.5 or newer:

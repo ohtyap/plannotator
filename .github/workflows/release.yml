@@ -1,0 +1,88 @@
+name: Linux release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'ohtyap/plannotator'
+    name: Build and test Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - arch: x64
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.5
+      - name: Verify build platform and version
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          bun -e '
+            const { version } = await Bun.file("package.json").json();
+            const semver = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+            if (process.platform !== "linux" || process.arch !== process.env.EXPECTED_ARCH)
+              throw new Error(`Unexpected build platform: ${process.platform}/${process.arch}`);
+            if (!semver.test(version)) throw new Error(`Expected an X.Y.Z version; got ${version}`);
+            if (process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF !== `refs/tags/v${version}`)
+              throw new Error(`Tag must be v${version} to match package.json`);
+          '
+      - run: bun install --frozen-lockfile
+      - run: bun run build:cli
+      - name: Smoke-test the release binary
+        env:
+          ASSET: plannotator-linux-${{ matrix.arch }}
+        run: |
+          mkdir release
+          mv dist/plannotator "release/$ASSET"
+          test "$("release/$ASSET" --version)" = "plannotator $(bun -p 'require("./package.json").version')"
+          PLANNOTATOR_TEST_BINARY="$PWD/release/$ASSET" bun run test:cli
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: plannotator-linux-${{ matrix.arch }}
+          path: release/plannotator-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    if: github.repository == 'ohtyap/plannotator' && github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: plannotator-linux-*
+          merge-multiple: true
+          path: release
+      - name: Publish binaries and checksums
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum plannotator-linux-arm64 plannotator-linux-x64 > SHA256SUMS
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes "" \
+            plannotator-linux-arm64 plannotator-linux-x64 SHA256SUMS

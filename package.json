@@ -1,6 +1,6 @@
 {
   "name": "plannotator",
-  "version": "0.29.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Standalone CLI for reviewing local changes and annotating documents in the browser",
   "author": "backnotprop",

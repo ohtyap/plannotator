@@ -33,3 +33,21 @@ to explicitly test a different compiled executable.
 For browser checks, run `bun run test:e2e` after building the binary and
 installing Playwright browsers and their system dependencies. The Playwright
 runner uses Node.js; the CLI itself does not.
+
+## GitHub releases
+
+This fork uses its own `vX.Y.Z` tags. The root `package.json` is the only CLI
+version source. Bump it, merge the change to `main`, then tag that commit and
+push the tag to `ohtyap/plannotator`. For example, for `0.1.0`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The **Linux release** workflow builds and smoke-tests Linux ARM64 and x64
+on native runners. After both pass, it publishes the two binaries and
+`SHA256SUMS` to the tag's GitHub Release. It never uploads over an existing
+release; use a new version to fix a published build. To test the workflow
+without publishing, use **Run workflow** in GitHub Actions and download the
+per-architecture artifacts from that run.
