@@ -88,7 +88,7 @@ describe('Settings cookie switch', () => {
     });
 
     test.skipIf(!hasDom)(`${mode}: no row without the server's advert (remote, --tailscale, an older server)`, async () => {
-      await mount(mode, { autoUpdate: false });
+      await mount(mode, {});
       expect(row()).toBeNull();
     });
   }

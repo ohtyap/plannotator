@@ -66,7 +66,7 @@ describe("POST /api/config on the Bun servers", () => {
         const forged = await fetch(`${server.url}/api/config`, {
           method: "POST",
           headers: { "Content-Type": "text/plain", Origin: "https://evil.example" },
-          body: JSON.stringify({ agentTool: true, autoUpdate: true }),
+          body: JSON.stringify({ agentTool: true }),
         });
         expect(forged.status).toBe(403);
         expect(loadConfig()).toEqual({});

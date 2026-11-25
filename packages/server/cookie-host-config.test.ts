@@ -3,18 +3,14 @@
  * POST /api/config `{ cookieHost }` writes or removes `urlHost:
  * "plannotator.localhost"`, never replaces another `urlHost` (a tailnet name,
  * `auto`, an IP), is locked while PLANNOTATOR_URL_HOST is set, and is refused
- * (and not advertised) in remote mode and `--tailscale` sessions. Also: a live
- * app session stays on localhost, and /api/update's Host check accepts the
- * configured name and no other subdomain.
+ * (and not advertised) in remote mode. A live app session stays on localhost.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startAnnotateServer } from "./annotate";
-import { handleUpdateRoute } from "./auto-update";
 import { loadConfig } from "./config";
-import { startPlannotatorServer } from "./index";
 import { startReviewServer } from "./review";
 
 const MINIMAL_HTML = "<html><body>Plannotator</body></html>";
@@ -47,10 +43,9 @@ const writeConfig = (value: Record<string, unknown>) => writeFileSync(configFile
 const base = (server: { port: number }) => `http://127.0.0.1:${server.port}`;
 const post = (server: { port: number }, body: unknown) =>
   fetch(`${base(server)}/api/config`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-const payloadPath = { plan: "/api/plan", review: "/api/diff", annotate: "/api/plan" } as const;
+const payloadPath = { review: "/api/diff", annotate: "/api/plan" } as const;
 
 const servers = {
-  plan: () => startPlannotatorServer({ plan: "# Plan", origin: "claude-code", htmlContent: MINIMAL_HTML }),
   review: () => startReviewServer({ rawPatch: PATCH, gitRef: "HEAD", htmlContent: MINIMAL_HTML }),
   annotate: () => startAnnotateServer({ markdown: "# Test", filePath: join(dataDir, "t.md"), htmlContent: MINIMAL_HTML }),
 };
@@ -84,7 +79,7 @@ describe("cookieHost through POST /api/config", () => {
       writeConfig({ urlHost: other });
       const before = readFileSync(configFile(), "utf8");
       // Remote mode would advertise the tailnet name; this session is local, so it still answers on loopback.
-      const server = await servers.plan();
+      const server = await servers.annotate();
       try {
         const config = ((await (await fetch(`${base(server)}/api/plan`)).json()) as { serverConfig: Record<string, unknown> }).serverConfig;
         expect(config.cookieHost).toEqual({ on: false, urlHost: other });
@@ -101,7 +96,7 @@ describe("cookieHost through POST /api/config", () => {
   }
 
   test("PLANNOTATOR_URL_HOST locks the switch and nothing is written", async () => {
-    const server = await servers.plan();
+    const server = await servers.annotate();
     try {
       process.env.PLANNOTATOR_URL_HOST = "plannotator.localhost";
       const config = ((await (await fetch(`${base(server)}/api/plan`)).json()) as { serverConfig: Record<string, unknown> }).serverConfig;
@@ -123,7 +118,7 @@ describe("cookieHost through POST /api/config", () => {
     const probe = Bun.serve({ port: 0, hostname: "0.0.0.0", fetch: () => new Response("") });
     process.env.PLANNOTATOR_PORT = String(probe.port);
     probe.stop(true);
-    const server = await servers.plan();
+    const server = await servers.annotate();
     try {
       const config = ((await (await fetch(`${base(server)}/api/plan`)).json()) as { serverConfig: Record<string, unknown> }).serverConfig;
       expect(config.cookieHost).toBeUndefined();
@@ -133,29 +128,6 @@ describe("cookieHost through POST /api/config", () => {
       expect(loadConfig().urlHost).toBeUndefined();
     } finally {
       server.stop();
-    }
-  });
-
-  test("a --tailscale session: not advertised, and a write is refused", async () => {
-    for (const start of [
-      () => startReviewServer({ rawPatch: PATCH, gitRef: "HEAD", htmlContent: MINIMAL_HTML, tailnetPublished: true }),
-      () => startAnnotateServer({ markdown: "# T", filePath: join(dataDir, "t.md"), htmlContent: MINIMAL_HTML, tailnetPublished: true }),
-    ]) {
-      const server = await start();
-      try {
-        const res = await post(server, { cookieHost: true });
-        expect(res.status).toBe(403);
-        expect(loadConfig().urlHost).toBeUndefined();
-      } finally {
-        server.stop();
-      }
-    }
-    const review = await startReviewServer({ rawPatch: PATCH, gitRef: "HEAD", htmlContent: MINIMAL_HTML, tailnetPublished: true });
-    try {
-      const config = ((await (await fetch(`${base(review)}/api/diff`)).json()) as { serverConfig: Record<string, unknown> }).serverConfig;
-      expect(config.cookieHost).toBeUndefined();
-    } finally {
-      review.stop();
     }
   });
 });
@@ -186,24 +158,5 @@ describe("the advertised address with a localhost subdomain configured", () => {
       live.stop();
       app.stop(true);
     }
-  });
-});
-
-describe("POST /api/update's Host check and the configured name", () => {
-  const update = (host: string, localHostname?: string | null) =>
-    handleUpdateRoute(
-      new Request("http://127.0.0.1:4321/api/update", { method: "POST", headers: { host }, body: "{}" }),
-      new URL("http://127.0.0.1:4321/api/update"),
-      { port: 4321, exposed: false, serverSession: "s", localHostname },
-    )!.then(async (res) => (await res.json()).code as string);
-
-  test("without a configured name, no localhost subdomain is this computer (main's behavior)", async () => {
-    expect(await update("plannotator.localhost:4321")).toBe("forbidden_host");
-    expect(await update("localhost:4321")).not.toBe("forbidden_host");
-  });
-
-  test("the configured name passes; another subdomain does not", async () => {
-    expect(await update("plannotator.localhost:4321", "plannotator.localhost")).not.toBe("forbidden_host");
-    expect(await update("other.localhost:4321", "plannotator.localhost")).toBe("forbidden_host");
   });
 });

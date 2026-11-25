@@ -5,7 +5,7 @@ import { useSyncExternalStore } from 'react';
  * the npm lookup consent (`lookup`, default off), from serverConfig and
  * written back with POST /api/config. The server enforces `lookup`; this
  * store only mirrors it so the card and Settings agree. Deliberately not a
- * settings-registry entry, like useUpdateCheckSetting: the registry is bundled
+ * settings-registry entry: the registry is bundled
  * into the portable guides.show viewer.
  */
 export interface PackageChangesSettingState {

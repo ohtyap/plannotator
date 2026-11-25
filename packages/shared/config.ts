@@ -313,24 +313,6 @@ export interface PlannotatorConfig {
    */
   reviewProgress?: boolean;
   /**
-   * Opt-in background auto-update for the compiled `plannotator` binary.
-   * When true, a session started by the CLI checks GitHub for a newer stable
-   * release at most once per 24h and, when no other review session is open,
-   * runs the normal install script for that exact tag in a detached process
-   * (output in update.log in the data dir). PLANNOTATOR_AUTO_UPDATE wins over
-   * this key. Default: false.
-   */
-  autoUpdate?: boolean;
-  /**
-   * Update notices: whether Plannotator asks GitHub (every few minutes per machine,
-   * from the machine, never the browser) whether a newer stable release
-   * exists, and tells you in the Inbox, the review windows and the terminal.
-   * `false` makes no automatic request at all, which also stops auto-update;
-   * `plannotator update` and the Inbox's Check now still ask when you run them.
-   * PLANNOTATOR_UPDATE_CHECK wins over this key. Default: true.
-   */
-  updateCheck?: boolean;
-  /**
    * The Claude Code mod (apps/hook/hooks/mod/): non-blocking plan review,
    * annotate, code review and annotate-last, plus "Ask this session", where
    * Claude Code runs hooks modules. On by default; `false` turns it off.
@@ -1638,10 +1620,6 @@ export function getServerConfig(
   agentTerminalDefaultAgent?: string;
   agentSwitch?: AgentSwitchConfigValue;
   annotateView?: AnnotateView;
-  autoUpdate: boolean;
-  autoUpdateEnv?: boolean;
-  updateCheck: boolean;
-  updateCheckEnv?: boolean;
   agentTool?: boolean;
   agentToolConfigured?: boolean;
   agentToolEnv?: boolean;
@@ -1652,8 +1630,6 @@ export function getServerConfig(
 } {
   const cfg = loadConfig();
   const packageLookupEnv = parsePackageLookupEnv();
-  const autoUpdateEnv = parseAutoUpdateEnv();
-  const updateCheckEnv = parseUpdateCheckEnv();
   const agentToolEnv = parseAgentToolEnv();
   const agentToolHost = agentToolHostOf(agentToolIntegration);
   const annotateView = parseAnnotateView(cfg.annotateView);
@@ -1681,15 +1657,6 @@ export function getServerConfig(
     ...agentSwitchAdvert(cfg.agentSwitch),
     // Only a known view is advertised; a typo leaves the page on today's default.
     ...(annotateView !== undefined && { annotateView }),
-    // Always explicit (the config-file value, default false) so a stale
-    // cookie can never show the toggle on while the config says off.
-    // autoUpdateEnv carries PLANNOTATOR_AUTO_UPDATE when it overrides the file.
-    autoUpdate: coerceConfigBoolean(cfg.autoUpdate, false),
-    ...(autoUpdateEnv !== undefined && { autoUpdateEnv }),
-    // Same shape for update notices (default true); updateCheckEnv carries
-    // PLANNOTATOR_UPDATE_CHECK when it overrides the file.
-    updateCheck: coerceConfigBoolean(cfg.updateCheck, true),
-    ...(updateCheckEnv !== undefined && { updateCheckEnv }),
     ...agentToolAdvert(cfg, agentToolEnv, agentToolHost),
     // Always explicit: the lookup is server-enforced, so the page must never
     // show it on from a stale value. lookupEnv carries the env hard off.
@@ -1734,7 +1701,7 @@ export function agentSwitchConfigToSave(body: { agentSwitch?: unknown }): AgentS
  *    see agentToolHostOf); absent otherwise, and then so are the fields below
  *    except a value config.json sets;
  *  - agentTool: the config-file value, or the host's default while unset
- *    (always explicit when the host is known, like autoUpdate);
+ *    (always explicit when the host is known);
  *  - agentToolConfigured: whether config.json holds an explicit choice;
  *  - agentToolEnv: PLANNOTATOR_AGENT_TOOL when it overrides the file;
  *  - agentToolEnabled: the effective value for this host (env, then file,
@@ -1959,44 +1926,6 @@ export function resolveReviewProgress(
   return coerceConfigBoolean(config.reviewProgress, true);
 }
 
-/**
- * Resolve whether the compiled CLI keeps itself up to date in the background.
- *
- * Priority (highest wins):
- *   PLANNOTATOR_AUTO_UPDATE env var  →  config.autoUpdate  →  default false
- *
- * Env `1` / `true` / `on` turn it on and `0` / `false` / `off` / `disabled`
- * turn it off; an empty or unrecognized value counts as unset.
- */
-export function resolveAutoUpdate(
-  config: PlannotatorConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const fromEnv = parseAutoUpdateEnv(env);
-  if (fromEnv !== undefined) return fromEnv;
-  return coerceConfigBoolean(config.autoUpdate, false);
-}
-
-/**
- * Resolve whether Plannotator checks for a newer release and shows update
- * notices (default on; this is the opt-out). Off also stops auto-update,
- * which needs the check.
- *
- * Priority (highest wins):
- *   PLANNOTATOR_UPDATE_CHECK env var  →  config.updateCheck  →  default true
- *
- * Env `0` / `false` / `off` / `disabled` turn it off and `1` / `true` / `on`
- * turn it on; an empty or unrecognized value counts as unset.
- */
-export function resolveUpdateCheck(
-  config: PlannotatorConfig,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const fromEnv = parseUpdateCheckEnv(env);
-  if (fromEnv !== undefined) return fromEnv;
-  return coerceConfigBoolean(config.updateCheck, true);
-}
-
 /** What in the environment turns the daily ping off (it can only turn it off). */
 export type TelemetryEnvOff = "DO_NOT_TRACK" | "NO_ANON_PING" | "CI";
 
@@ -2019,14 +1948,6 @@ export function parseTelemetryEnvOff(env: NodeJS.ProcessEnv = process.env): Tele
     const v = env[name]?.trim().toLowerCase();
     if (v && v !== "0" && v !== "false") return "CI";
   }
-  return undefined;
-}
-
-/** The PLANNOTATOR_UPDATE_CHECK override, or undefined when it does not decide. */
-export function parseUpdateCheckEnv(env: NodeJS.ProcessEnv = process.env): boolean | undefined {
-  const v = env.PLANNOTATOR_UPDATE_CHECK?.trim().toLowerCase();
-  if (v === "1" || v === "true" || v === "on") return true;
-  if (v === "0" || v === "false" || v === "off" || v === "disabled") return false;
   return undefined;
 }
 
@@ -2452,14 +2373,6 @@ export function resolveInboxTailscaleAllow(config: PlannotatorConfig): string[] 
 export function agentToolSaveFailed(toSave: { agentTool?: unknown }): boolean {
   if (typeof toSave.agentTool !== "boolean") return false;
   return parseConfigBoolean(loadConfig().agentTool) !== toSave.agentTool;
-}
-
-/** The PLANNOTATOR_AUTO_UPDATE override, or undefined when it does not decide. */
-export function parseAutoUpdateEnv(env: NodeJS.ProcessEnv = process.env): boolean | undefined {
-  const v = env.PLANNOTATOR_AUTO_UPDATE?.trim().toLowerCase();
-  if (v === "1" || v === "true" || v === "on") return true;
-  if (v === "0" || v === "false" || v === "off" || v === "disabled") return false;
-  return undefined;
 }
 
 export function resolveUseJina(cliNoJina: boolean, config: PlannotatorConfig): boolean {

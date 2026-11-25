@@ -27,12 +27,8 @@ import {
   resolvePlatformDecisionAction,
   resolveReviewDecisionAction,
 } from './reviewDecision';
-import { useUpdateCheck } from '@plannotator/ui/hooks/useUpdateCheck';
-import { useUpdateToast } from '@plannotator/ui/hooks/useUpdateToast';
 import { useCookieHostSetting } from '@plannotator/ui/hooks/useCookieHostSetting';
 import { adoptPackageChangesConfig, usePackageChangesSetting } from '@plannotator/ui/hooks/usePackageChangesSetting';
-import { parseUpdateAdvert, parseUpdateCheckFailing, type UpdateAdvert, type UpdateCheckFailingAdvert } from '@plannotator/ui/utils/updateNotice';
-import { claimAutoUpdateNotice, describeAutoUpdateNotice, parseAutoUpdateNotice, type AutoUpdateNotice } from '@plannotator/ui/utils/autoUpdateNotice';
 import { storage } from '@plannotator/ui/utils/storage';
 import { RefHoverCards } from '@plannotator/ui/components/RefHoverCard';
 import { CompletionOverlay } from '@plannotator/ui/components/CompletionOverlay';
@@ -687,7 +683,6 @@ const ReviewApp: React.FC = () => {
   const guideReachable = aiUIEnabled || hasSavedGuides;
   const guideVisible = guideReachable && guideOpen;
   const [gitUser, setGitUser] = useState<string | undefined>();
-  const [isWSL, setIsWSL] = useState(false);
   const [reviewMode, setReviewMode] = useState<string | null>(null);
   const [diffType, setDiffType] = useState<string>('uncommitted');
   const [gitContext, setGitContext] = useState<GitContext | null>(null);
@@ -1039,38 +1034,8 @@ const ReviewApp: React.FC = () => {
       ? `You can't request changes on your own ${mrLabel === 'MR' ? 'merge request' : 'pull request'} on ${platformLabel}.`
       : undefined;
   const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
-  // The server's update advert (the machine's once-a-day check): the Options
-  // dot, the menu's command and the toast. The browser never asks GitHub.
-  const [updateAdvert, setUpdateAdvert] = useState<UpdateAdvert | null>(null);
-  // Checking for updates has failed for hours: the Options menu says so, with the command.
-  const [updateCheckFailing, setUpdateCheckFailing] = useState<UpdateCheckFailingAdvert | null>(null);
-  const updateInfo = useUpdateCheck(updateAdvert, updateCheckFailing);
-  // True when the compiled CLI will install new releases itself (#1634); the
-  // "new version available" toast is then redundant and stays hidden.
-  const [autoUpdateActive, setAutoUpdateActive] = useState(false);
-  // The update-notice switch for Settings: present when the server reports it.
   const cookieHostSetting = useCookieHostSetting();
   const packageChangesSetting = usePackageChangesSetting();
-  // One-time notice after a background auto-update (#1634); the compiled
-  // CLI's server attaches it to the initial payload.
-  const [autoUpdateNotice, setAutoUpdateNotice] = useState<AutoUpdateNotice | undefined>();
-  const [autoUpdateSetting, setAutoUpdateSetting] = useState<{ env?: boolean } | undefined>();
-  useEffect(() => {
-    if (!autoUpdateNotice || !claimAutoUpdateNotice(autoUpdateNotice)) return;
-    const { title, description } = describeAutoUpdateNotice(autoUpdateNotice);
-    const t = setTimeout(() => {
-      toast(title, {
-        description,
-        duration: autoUpdateNotice.kind === 'failed' ? 10000 : 6000,
-        position: 'top-right',
-        action: { label: 'Release notes', onClick: () => window.open(autoUpdateNotice.releaseUrl, '_blank', 'noopener,noreferrer') },
-        // The failed notice names the update log's path: keep that line selectable
-        // so it can be copied (every other toast is select-none, see <Toaster>).
-        classNames: { toast: '!w-auto', description: autoUpdateNotice.kind === 'failed' ? '!text-foreground/70 select-text' : '!text-foreground/70' },
-      });
-    }, 1500);
-    return () => clearTimeout(t);
-  }, [autoUpdateNotice]);
 
   const identity = useConfigValue('displayName');
 
@@ -2841,7 +2806,6 @@ const ReviewApp: React.FC = () => {
         platformUser?: string;
         viewedFiles?: string[];
         error?: string;
-        isWSL?: boolean;
         callFlow?: CallFlowAdvert;
         sections?: SinceBaseSections;
         commitInfo?: CommitDiffInfo;
@@ -2851,25 +2815,14 @@ const ReviewApp: React.FC = () => {
         snapshotId?: string;
         imageSizes?: ImageSizes;
         localDraftTarget?: string | null;
-        serverConfig?: Record<string, unknown> & { displayName?: string; gitUser?: string; autoUpdate?: boolean; autoUpdateEnv?: boolean; updateCheck?: boolean; updateCheckEnv?: boolean };
-        autoUpdateNotice?: unknown;
-        updateAvailable?: unknown; updateCheckFailing?: unknown;
-        autoUpdateSupported?: boolean;
-        autoUpdateActive?: boolean;
+        serverConfig?: Record<string, unknown> & { displayName?: string; gitUser?: string };
       }) => {
         apiModeRef.current = true;
         // Initialize config store with server-provided values (config file > cookie > default)
         configStore.init(data.serverConfig);
         // gitUser drives the "Use git name" button in Settings; stays undefined (button hidden) when unavailable
         setGitUser(data.serverConfig?.gitUser);
-        // Only the compiled CLI running the installer-managed binary offers the
-        // toggle; OpenCode, Pi and dev runs send no autoUpdateSupported.
-        setAutoUpdateSetting(data.autoUpdateSupported === true && typeof data.serverConfig?.autoUpdate === 'boolean' ? { env: data.serverConfig.autoUpdateEnv } : undefined);
         agentTool.adopt(data.serverConfig);
-        setAutoUpdateActive(data.autoUpdateActive === true);
-        setAutoUpdateNotice(parseAutoUpdateNotice(data.autoUpdateNotice));
-        setUpdateAdvert(parseUpdateAdvert(data.updateAvailable));
-        setUpdateCheckFailing(parseUpdateCheckFailing(data.updateCheckFailing));
         cookieHostSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         adoptPackageChangesConfig(data.serverConfig as Record<string, unknown> | undefined);
         primeImageSizes(data.snapshotId, data.imageSizes);
@@ -2939,7 +2892,6 @@ const ReviewApp: React.FC = () => {
           setViewedFiles(new Set(data.viewedFiles));
         }
         if (data.error) setDiffError(data.error);
-        if (data.isWSL) setIsWSL(true);
         if (data.callFlow) setCallFlowAdvert(data.callFlow);
         setSections(data.sections ?? null);
         setCommitInfo(data.commitInfo ?? null);
@@ -3503,14 +3455,6 @@ const ReviewApp: React.FC = () => {
     fileKey: isAllFilesActive ? 'all' : activeFileIndex,
   });
   const handleAutoView = autoViewedNotice.show;
-  // The update toast waits behind the guide takeover and every first-run
-  // dialog of this load (useUpdateToast).
-  useUpdateToast({
-    advert: updateAdvert,
-    blocked: isLoading || guideOpen,
-    autoUpdateActive,
-    position: 'top-right',
-  });
   const { handleReadingFileChange: handleAutoViewReadingFile, handleFileScrolledPast } = useAutoViewed({
     enabled: autoViewedEnabled,
     // Rule 4 — only the review target. The guide takeover CSS-hides the dock
@@ -6222,9 +6166,6 @@ const ReviewApp: React.FC = () => {
               compactTouchLayout={isCompactTouchLayout}
               agentInstructionsEnabled={isApiMode}
               appVersion={appVersion}
-              updateInfo={updateInfo}
-              origin={origin}
-              isWSL={isWSL}
             />
           </div>
         </header>
@@ -6633,7 +6574,6 @@ const ReviewApp: React.FC = () => {
             mode="review"
             aiProviders={aiProviders}
             gitUser={gitUser}
-            autoUpdateSetting={autoUpdateSetting}
             cookieHostSetting={cookieHostSetting.setting}
             packageChangesSetting={packageChangesSetting}
             agentToolSetting={agentTool.setting}

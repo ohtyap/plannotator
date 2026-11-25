@@ -96,7 +96,7 @@ function post(url: string, path: string, body: unknown) {
 test("unsupported commands and PR URLs fail before starting a session", async () => {
   await withSandbox(async (cwd, env) => {
     for (const args of [
-      ["inbox"], ["shape"], ["archive"], ["annotate-last"], ["opencode-review"], ["annotate", "test.md", "--hook"],
+      ["update"], ["inbox"], ["shape"], ["archive"], ["annotate-last"], ["opencode-review"], ["annotate", "test.md", "--hook"],
       ["review", "https://github.com/org/repo/pull/12"], ["review", "--local"],
     ]) {
       const result = await run(args, cwd, env);
@@ -107,6 +107,34 @@ test("unsupported commands and PR URLs fail before starting a session", async ()
     expect(version.code).toBe(0);
     expect(version.stdout).toMatch(/^plannotator \d+\.\d+\.\d+/);
   });
+});
+
+test("review and annotate ignore retired updater configuration", async () => {
+  const cases = [
+    { args: ["review", "--patch-file", "-", "--json"], path: "/api/diff", stdin: patch, body: { approved: true, annotations: [] } },
+    { args: ["annotate", "test.md", "--json"], path: "/api/plan", body: { annotations: [], feedback: "A note." } },
+  ];
+  for (const { args, path, stdin, body } of cases) {
+    await withSandbox(async (cwd, env) => {
+      const configFile = join(env.PLANNOTATOR_DATA_DIR!, "config.json");
+      mkdirSync(env.PLANNOTATOR_DATA_DIR!);
+      writeFileSync(configFile, JSON.stringify({ autoUpdate: true, updateCheck: true, displayName: "Before" }));
+      writeFileSync(join(cwd, "test.md"), "# Test");
+      const result = await withSession(args, cwd, env, async (url) => {
+        const data = await (await api(url, path)).json();
+        expect(data.serverConfig).not.toHaveProperty("autoUpdate");
+        expect(data.serverConfig).not.toHaveProperty("updateCheck");
+        expect(data).not.toHaveProperty("updateAvailable");
+        expect((await post(url, "/api/update", {})).status).toBe(404);
+        expect((await post(url, "/api/config", { autoUpdate: false, updateCheck: false, displayName: "After" })).ok).toBe(true);
+        expect(JSON.parse(readFileSync(configFile, "utf8"))).toMatchObject({
+          autoUpdate: true, updateCheck: true, displayName: "After",
+        });
+        expect((await post(url, "/api/feedback", { ...body, serverSession: data.serverSession })).ok).toBe(true);
+      }, stdin);
+      expect(result.code).toBe(0);
+    });
+  }
 });
 
 test("local checkout review serves an actual working tree diff and returns selected feedback", async () => {
@@ -128,7 +156,6 @@ test("local checkout review serves an actual working tree diff and returns selec
       expect((await post(url, "/api/pr-action", {})).status).toBe(404);
       expect((await post(url, "/api/fetch-base", {})).status).toBe(404);
       expect((await post(url, "/api/ai/bridge/poll", {})).status).toBe(404);
-      expect((await post(url, "/api/update", {})).status).toBe(404);
       expect((await post(url, "/api/feedback", {
         approved: false, annotations: [], feedback: "Keep the example consistent.", serverSession: diff.serverSession,
       })).ok).toBe(true);

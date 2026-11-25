@@ -20,6 +20,8 @@ curl -fLO "$base/$asset" &&
 ```
 
 The executable runs on Linux; you can use a browser on another OS through an SSH tunnel.
+Plannotator does not check for or install updates. To upgrade, download another
+tagged release and replace the executable.
 
 ## Build
 

@@ -67,7 +67,6 @@ import { isFaviconStyle, type FaviconStyle } from "@plannotator/shared/favicon";
 import { existsSync } from "fs";
 import { dirname, resolve as resolvePath } from "path";
 import { htmlAssetFileState } from "@plannotator/shared/html-assets-node";
-import { isWSL } from "./browser";
 import { handleOpenInApps, handleOpenIn } from "./open-in";
 import { createAIRuntime } from "./ai-runtime";
 import { checkServerSession, createServerSessionNonce, serverSessionMismatchBody } from "@plannotator/shared/server-session";
@@ -305,7 +304,6 @@ export async function startAnnotateServer(
   if (liveApp && isRemote) throw new Error("Live app annotation is unavailable in remote mode");
   const compressAppHtml = isRemote;
   const app = openPackedApp(htmlContent, { page: (html) => customThemesPage(html) });
-  const wslFlag = await isWSL();
   const gitUser = detectGitUser();
 
   // Diagram sources (.mmd/.mermaid/.dot/.gv) and AsciiDoc (.adoc) render
@@ -846,7 +844,6 @@ export async function startAnnotateServer(
               convertHtml: false,
               repoInfo,
               projectRoot: process.cwd(),
-              isWSL: wslFlag,
               serverConfig: getServerConfig(gitUser, undefined, { cookieHost: !isRemote }),
               feedbackTemplates: {
                 fileFeedback: getAnnotateFileFeedbackTemplate(origin),
@@ -916,7 +913,6 @@ export async function startAnnotateServer(
               projectRoot: folderPath || bundleRoot || process.cwd(),
               // The bundle's files in review order (annotate-bundle only).
               ...(bundleFiles ? { bundle: bundleFiles } : {}),
-              isWSL: wslFlag,
               // Extra extensions the user registered as markdown (#1307).
               // The renderer needs them to linkify relative/wiki links to
               // sibling docs the same way it linkifies .md ones.
@@ -1074,7 +1070,7 @@ export async function startAnnotateServer(
               return Response.json({ error: "Cross-origin config writes are not allowed" }, { status: 403 });
             }
             try {
-              const body = (await req.json()) as { agentSwitch?: unknown; displayName?: string; diffOptions?: Record<string, unknown>; theme?: Record<string, unknown>; favicon?: FaviconStyle; autoUpdate?: unknown; updateCheck?: unknown; agentTool?: unknown; conventionalComments?: boolean; conventionalLabels?: unknown[] | null; agentTerminalSide?: unknown; agentTerminalDefaultAgent?: unknown };
+              const body = (await req.json()) as { agentSwitch?: unknown; displayName?: string; diffOptions?: Record<string, unknown>; theme?: Record<string, unknown>; favicon?: FaviconStyle; agentTool?: unknown; conventionalComments?: boolean; conventionalLabels?: unknown[] | null; agentTerminalSide?: unknown; agentTerminalDefaultAgent?: unknown };
               const toSave: Record<string, unknown> = {};
               // OpenCode's agent switch (#1390): a known shape or nothing is saved.
               const agentSwitch = agentSwitchConfigToSave(body);
@@ -1084,8 +1080,6 @@ export async function startAnnotateServer(
               if (body.diffOptions !== undefined) toSave.diffOptions = body.diffOptions;
               if (body.theme !== undefined) toSave.theme = body.theme;
               if (isFaviconStyle(body.favicon)) toSave.favicon = body.favicon;
-              if (typeof body.autoUpdate === "boolean") toSave.autoUpdate = body.autoUpdate;
-              if (typeof body.updateCheck === "boolean") toSave.updateCheck = body.updateCheck;
               // The agent tool switch: boolean only; it applies to the next session.
               if (typeof body.agentTool === "boolean") toSave.agentTool = body.agentTool;
               if (body.conventionalComments !== undefined) toSave.conventionalComments = body.conventionalComments;

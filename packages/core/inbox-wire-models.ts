@@ -126,7 +126,7 @@ export interface OutboxView {
   machine_name?: string | null;
 }
 
-/** Checking for updates has failed for hours with no success (packages/shared/update-check.ts releaseCheckFailing). */
+/** The upstream Inbox reports when its release check has failed for hours. */
 export interface UpdateCheckFailing {
   since: string;
   error: string;

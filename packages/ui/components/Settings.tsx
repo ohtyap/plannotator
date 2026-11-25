@@ -1,5 +1,4 @@
 import { DiffDisplayOptionsBody } from './DiffDisplayOptions';
-import type { UpdateCheckSetting } from '../hooks/useUpdateCheckSetting';
 import { cookieHostDescription, type CookieHostSetting } from '../hooks/useCookieHostSetting';
 import type { PackageChangesSetting } from '../hooks/usePackageChangesSetting';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -167,14 +166,6 @@ interface SettingsProps {
   aiProviders?: Array<{ id: string; name: string; capabilities: Record<string, boolean>; models?: Array<{ id: string; label: string; default?: boolean }> }>;
   /** Git user name from `git config user.name`, for quick identity set */
   gitUser?: string;
-  /** Present when the server advertises the auto-update setting (#1634);
-   *  `env` is PLANNOTATOR_AUTO_UPDATE when it overrides the config file.
-   *  Hosts that omit it get no toggle. */
-  autoUpdateSetting?: { env?: boolean };
-  /** Present when the server reports the update-notice switch (serverConfig.updateCheck,
-   *  useUpdateCheckSetting); `env` is PLANNOTATOR_UPDATE_CHECK when it overrides the
-   *  config file. Hosts that omit it get no row. */
-  updateCheckSetting?: UpdateCheckSetting;
   /** "Open Plannotator at plannotator.localhost" (#2184, useCookieHostSetting): present
    *  only when the server reports it (a local session). Hosts that omit it get no row. */
   cookieHostSetting?: CookieHostSetting;
@@ -1188,10 +1179,8 @@ const CommentsTab: React.FC = () => {
   );
 };
 
-export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, localSaveOnly = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], gitUser, autoUpdateSetting, updateCheckSetting, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, hideRepoOwnerSetting = false, showDocumentTextSize = false, showDocumentFont = false }) => {
+export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, localSaveOnly = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], gitUser, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, hideRepoOwnerSetting = false, showDocumentTextSize = false, showDocumentFont = false }) => {
   const webmcpTools = useWebMcpToolsEnabled();
-  const autoUpdate = useConfigValue('autoUpdate');
-  const updateChecksOn = updateCheckSetting ? updateCheckSetting.on : true;
   const [showDialog, setShowDialog] = useState(false);
   const settingsWasOpenRef = useRef(false);
   const [themePreview, setThemePreview] = useState(false);
@@ -1700,47 +1689,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                             description="When on, documents, code review and tab titles name the repository without its owner. Hover the name to see the owner."
                           />
                         </div>
-                      </>
-                    )}
-
-                    {/* Update notices: on by default. Writes updateCheck to
-                        ~/.plannotator/config.json; off makes no request to GitHub. */}
-                    {updateCheckSetting && (
-                      <>
-                        <div className="border-t border-border" />
-                        <ToggleSwitch
-                          checked={updateChecksOn}
-                          onChange={(v) => updateCheckSetting.onChange(v)}
-                          disabled={updateCheckSetting.env !== undefined}
-                          label="Tell me when a new version is out"
-                          description={
-                            updateCheckSetting.env !== undefined
-                              ? 'Set by PLANNOTATOR_UPDATE_CHECK in your environment.'
-                              : 'This computer asks GitHub every few minutes, never your browser. Off makes no request at all.'
-                          }
-                        />
-                      </>
-                    )}
-
-                    {/* Auto-update (#1634): opt-in, default off. Writes
-                        autoUpdate to ~/.plannotator/config.json. It needs
-                        update checks, so it is locked while they are off. */}
-                    {autoUpdateSetting && (
-                      <>
-                        <div className="border-t border-border" />
-                        <ToggleSwitch
-                          checked={(autoUpdateSetting.env ?? autoUpdate) && updateChecksOn}
-                          onChange={(v) => configStore.set('autoUpdate', v)}
-                          disabled={autoUpdateSetting.env !== undefined || !updateChecksOn}
-                          label="Keep Plannotator up to date"
-                          description={
-                            autoUpdateSetting.env !== undefined
-                              ? 'Set by PLANNOTATOR_AUTO_UPDATE in your environment.'
-                              : !updateChecksOn
-                                ? 'Needs update checks (above).'
-                                : 'Installs new releases in the background, at most once a day, never while another review is open.'
-                          }
-                        />
                       </>
                     )}
 

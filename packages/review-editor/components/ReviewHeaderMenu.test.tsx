@@ -53,4 +53,14 @@ describe('ReviewHeaderMenu Options button', () => {
     const trigger = await renderMenu(true);
     expect(trigger!.textContent).toContain('Options');
   });
+
+  test.skipIf(!hasDom)('the menu shows the running version without update actions', async () => {
+    const trigger = await renderMenu(false);
+    await act(async () => trigger!.click());
+    const footer = host!.querySelector('[data-menu-version]')!;
+    expect(footer.textContent).toContain('vtest');
+    expect([...footer.querySelectorAll('a')].map((link) => link.getAttribute('href')))
+      .toEqual(['https://github.com/backnotprop/plannotator']);
+    expect(footer.querySelector('button')).toBeNull();
+  });
 });

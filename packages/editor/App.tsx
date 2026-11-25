@@ -73,11 +73,7 @@ import { getIdentity } from '@plannotator/ui/utils/identity';
 import { copyTextToClipboard } from '@plannotator/ui/utils/clipboard';
 import { configStore, useConfigValue } from '@plannotator/ui/config';
 import { CompletionOverlay } from '@plannotator/ui/components/CompletionOverlay';
-import { useUpdateCheck } from '@plannotator/ui/hooks/useUpdateCheck';
-import { useUpdateToast } from '@plannotator/ui/hooks/useUpdateToast';
 import { useCookieHostSetting } from '@plannotator/ui/hooks/useCookieHostSetting';
-import { parseUpdateAdvert, parseUpdateCheckFailing, type UpdateAdvert, type UpdateCheckFailingAdvert } from '@plannotator/ui/utils/updateNotice';
-import { claimAutoUpdateNotice, describeAutoUpdateNotice, parseAutoUpdateNotice, type AutoUpdateNotice } from '@plannotator/ui/utils/autoUpdateNotice';
 import { LookAndFeelAnnouncementDialog } from '@plannotator/ui/components/LookAndFeelAnnouncementDialog';
 import { getObsidianSettings, getEffectiveVaultPath, isObsidianConfigured, CUSTOM_PATH_SENTINEL } from '@plannotator/ui/utils/obsidian';
 import { getBearSettings } from '@plannotator/ui/utils/bear';
@@ -626,39 +622,7 @@ const App: React.FC = () => {
   const refCardRootRef = useRef<HTMLDivElement>(null);
   const [origin, setOrigin] = useState<Origin | null>(null);
   const [gitUser, setGitUser] = useState<string | undefined>();
-  const [isWSL, setIsWSL] = useState(false);
-  // The server's update advert (the machine's once-a-day check): the Options
-  // dot, the menu's command and the toast. The browser never asks GitHub.
-  const [updateAdvert, setUpdateAdvert] = useState<UpdateAdvert | null>(null);
-  // Checking for updates has failed for hours: the Options menu says so, with the command.
-  const [updateCheckFailing, setUpdateCheckFailing] = useState<UpdateCheckFailingAdvert | null>(null);
-  const updateInfo = useUpdateCheck(updateAdvert, updateCheckFailing);
-  // Opened from a share link (hash): nobody here to tell about updates.
-  const [openedWithHash] = useState(() => typeof window !== 'undefined' && !!window.location.hash);
-  // True when the compiled CLI will install new releases itself (#1634); the
-  // "new version available" toast is then redundant and stays hidden.
-  const [autoUpdateActive, setAutoUpdateActive] = useState(false);
-  // The update-notice switch for Settings: present when the server reports it.
   const cookieHostSetting = useCookieHostSetting();
-  // One-time notice after a background auto-update (#1634); the compiled
-  // CLI's server attaches it to the initial payload.
-  const [autoUpdateNotice, setAutoUpdateNotice] = useState<AutoUpdateNotice | undefined>();
-  const [autoUpdateSetting, setAutoUpdateSetting] = useState<{ env?: boolean } | undefined>();
-  useEffect(() => {
-    if (!autoUpdateNotice || !claimAutoUpdateNotice(autoUpdateNotice)) return;
-    const { title, description } = describeAutoUpdateNotice(autoUpdateNotice);
-    const t = setTimeout(() => {
-      toast(title, {
-        description,
-        duration: autoUpdateNotice.kind === 'failed' ? 10000 : 6000,
-        action: { label: 'Release notes', onClick: () => window.open(autoUpdateNotice.releaseUrl, '_blank', 'noopener,noreferrer') },
-        // The failed notice names the update log's path: keep that line selectable
-        // so it can be copied (every other toast is select-none, see <Toaster>).
-        classNames: { toast: '!w-auto', description: autoUpdateNotice.kind === 'failed' ? '!text-foreground/70 select-text' : '!text-foreground/70' },
-      });
-    }, 1500);
-    return () => clearTimeout(t);
-  }, [autoUpdateNotice]);
   // Markdown edit mode (prototype): CM6 live-preview editor over the raw plan
   // text. originalMarkdownRef is the as-submitted baseline for the edit diff —
   // set once at plan load, never by linked-doc navigation or edit commits.
@@ -3886,7 +3850,7 @@ const App: React.FC = () => {
         if (!res.ok) throw new Error('Not in API mode');
         return res.json();
       })
-      .then((data: { plan: string; origin?: Origin; mode?: 'annotate' | 'annotate-last' | 'annotate-folder' | 'annotate-app' | 'annotate-bundle' | 'archive' | 'goal-setup'; bundle?: unknown; goalSetup?: GoalSetupBundle; filePath?: string; appUrl?: string; targetUrl?: string; liveToken?: string; sourceInfo?: string; title?: string; sourceConverted?: boolean; sourceSave?: SourceSaveCapability; gate?: boolean; approvalNotesSupported?: boolean; clientLease?: AnnotateClientLeaseConfig; renderAs?: DocumentRenderAs; rawHtml?: string; shareHtml?: string; diffHtml?: string; convertHtml?: boolean; sharingEnabled?: boolean; shareBaseUrl?: string; pasteApiUrl?: string; repoInfo?: { display: string; branch?: string; host?: string }; previousPlan?: string | null; versionInfo?: { version: number; totalVersions: number; project: string }; liveVersions?: boolean; planRevision?: number; serverSession?: string; archivePlans?: ArchivedPlan[]; projectRoot?: string; planDir?: string; planPath?: string; planFilePath?: string; isWSL?: boolean; notion?: boolean; markdownExtensions?: string[]; documentDrafts?: boolean; serverConfig?: { displayName?: string; gitUser?: string; annotateView?: unknown; autoUpdate?: boolean; autoUpdateEnv?: boolean; updateCheck?: boolean; updateCheckEnv?: boolean }; autoUpdateNotice?: unknown; updateAvailable?: unknown; updateCheckFailing?: unknown; autoUpdateSupported?: boolean; autoUpdateActive?: boolean; recentMessages?: PickerMessage[]; agentTerminal?: AgentTerminalCapability; feedbackTemplates?: AnnotateFeedbackTemplates }) => {
+      .then((data: { plan: string; origin?: Origin; mode?: 'annotate' | 'annotate-last' | 'annotate-folder' | 'annotate-app' | 'annotate-bundle' | 'archive' | 'goal-setup'; bundle?: unknown; goalSetup?: GoalSetupBundle; filePath?: string; appUrl?: string; targetUrl?: string; liveToken?: string; sourceInfo?: string; title?: string; sourceConverted?: boolean; sourceSave?: SourceSaveCapability; gate?: boolean; approvalNotesSupported?: boolean; clientLease?: AnnotateClientLeaseConfig; renderAs?: DocumentRenderAs; rawHtml?: string; shareHtml?: string; diffHtml?: string; convertHtml?: boolean; sharingEnabled?: boolean; shareBaseUrl?: string; pasteApiUrl?: string; repoInfo?: { display: string; branch?: string; host?: string }; previousPlan?: string | null; versionInfo?: { version: number; totalVersions: number; project: string }; liveVersions?: boolean; planRevision?: number; serverSession?: string; archivePlans?: ArchivedPlan[]; projectRoot?: string; planDir?: string; planPath?: string; planFilePath?: string; notion?: boolean; markdownExtensions?: string[]; documentDrafts?: boolean; serverConfig?: { displayName?: string; gitUser?: string; annotateView?: unknown }; recentMessages?: PickerMessage[]; agentTerminal?: AgentTerminalCapability; feedbackTemplates?: AnnotateFeedbackTemplates }) => {
         // Initialize config store with server-provided values (config file > cookie > default)
         configStore.init(data.serverConfig);
         // Save to Notion: offered only when the server has NOTION_TOKEN and the session is local.
@@ -3903,13 +3867,6 @@ const App: React.FC = () => {
         setAISessionEnabled(data.mode !== 'archive' && data.mode !== 'goal-setup');
         // gitUser drives the "Use git name" button in Settings; stays undefined (button hidden) when unavailable
         setGitUser(data.serverConfig?.gitUser);
-        // Only the compiled CLI running the installer-managed binary offers the
-        // toggle; OpenCode, Pi and dev runs send no autoUpdateSupported.
-        setAutoUpdateSetting(data.autoUpdateSupported === true && typeof data.serverConfig?.autoUpdate === 'boolean' ? { env: data.serverConfig.autoUpdateEnv } : undefined);
-        setAutoUpdateActive(data.autoUpdateActive === true);
-        setAutoUpdateNotice(parseAutoUpdateNotice(data.autoUpdateNotice));
-        setUpdateAdvert(parseUpdateAdvert(data.updateAvailable));
-        setUpdateCheckFailing(parseUpdateCheckFailing(data.updateCheckFailing));
         cookieHostSetting.adopt(data.serverConfig as Record<string, unknown> | undefined);
         if (data.mode === 'goal-setup' && data.goalSetup) {
           setGoalSetupBundle(data.goalSetup);
@@ -4069,9 +4026,6 @@ const App: React.FC = () => {
           }
           // Load saved permission mode preference
           setPermissionMode(getPermissionModeSettings().mode);
-        }
-        if (data.isWSL) {
-          setIsWSL(true);
         }
       })
       .catch(() => {
@@ -6923,18 +6877,6 @@ const App: React.FC = () => {
     !isSharedSession &&
     !goalSetupMode &&
     !showPermissionModeSetup;
-  // The update toast waits behind every first-run dialog of this load, and
-  // never shows to a shared or archive session (useUpdateToast).
-  useUpdateToast({
-    advert: updateAdvert,
-    blocked:
-      isLoading
-      || shouldShowLookAndFeelAnnouncement
-      || goalSetupMode
-      || showPermissionModeSetup,
-    autoUpdateActive,
-    suppressed: openedWithHash || isSharedSession || archive.archiveMode || !isApiMode,
-  });
   const compactNavigatorTabs: SidebarTab[] = [
     ...(hasTocEntries ? ['toc' as const] : []),
     ...(!isHtmlSurface && activeDiffVersionInfo !== null && activeDiffVersionInfo.totalVersions > 1
@@ -7261,7 +7203,6 @@ const App: React.FC = () => {
           taterMode={taterMode}
           mobileSettingsOpen={mobileSettingsOpen}
           gitUser={gitUser}
-          autoUpdateSetting={autoUpdateSetting}
           cookieHostSetting={cookieHostSetting.setting}
           agentTerminalAvailable={showAgentTerminalControls}
           documentTextSizeAvailable={renderAs === 'markdown' || renderAs === 'asciidoc' || renderAs === 'code'}
@@ -7291,8 +7232,6 @@ const App: React.FC = () => {
           onSaveToOctarine={handleSaveToOctarine}
           onSaveToNotion={handleSaveToNotion}
           appVersion={typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'}
-          updateInfo={updateInfo}
-          isWSL={isWSL}
           agentInstructionsEnabled={false}
           obsidianConfigured={false}
           bearConfigured={false}

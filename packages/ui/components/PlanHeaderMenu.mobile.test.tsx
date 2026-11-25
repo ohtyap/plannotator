@@ -100,6 +100,11 @@ describe.if(hasDom)('PlanHeaderMenu compact actions', () => {
 
     expect(host.textContent).not.toContain('Approve');
     expect(host.textContent).toContain('Settings');
+    const footer = host.querySelector('[data-menu-version]')!;
+    expect(footer.textContent).toContain('v0.0.0');
+    expect([...footer.querySelectorAll('a')].map((link) => link.getAttribute('href')))
+      .toEqual(['https://github.com/backnotprop/plannotator']);
+    expect(footer.querySelector('button')).toBeNull();
     await act!(async () => root.unmount());
   });
 });

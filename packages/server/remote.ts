@@ -208,8 +208,8 @@ export function getServerHostname(): string {
 /**
  * The localhost subdomain sessions are advertised at (`urlHost:
  * "plannotator.localhost"`, #2184), or undefined. Servers read it once at
- * start and hand it to the loopback Host checks of the routes a page calls
- * (Ask this session, `/api/update`), so a page at that name is "this computer".
+ * start and hand it to the loopback Host checks of the routes a page calls,
+ * so a page at that name is "this computer".
  */
 export function getLocalUrlHostname(): string | undefined {
   return resolveLocalUrlHostname(loadConfig());

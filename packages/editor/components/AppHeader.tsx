@@ -1,8 +1,6 @@
-import type { UpdateCheckSetting } from '@plannotator/ui/hooks/useUpdateCheckSetting';
 import type { CookieHostSetting } from '@plannotator/ui/hooks/useCookieHostSetting';
 import React from 'react';
 import type { Origin } from '@plannotator/shared/agents';
-import type { UpdateInfo } from '@plannotator/ui/hooks/useUpdateCheck';
 import { FeedbackButton, ApproveButton, ExitButton } from '@plannotator/ui/components/ToolbarButtons';
 import { DecisionControl, type DecisionControlProps, type DecisionHandler } from '@plannotator/ui/components/DecisionControl';
 import { QuestionProgressChip } from '@plannotator/ui/components/QuestionProgressChip';
@@ -122,9 +120,6 @@ interface AppHeaderProps {
   taterMode: boolean;
   mobileSettingsOpen: boolean;
   gitUser: string | undefined;
-  /** Present when the server advertises the auto-update setting; Settings shows its switch. */
-  autoUpdateSetting?: { env?: boolean };
-  updateCheckSetting?: UpdateCheckSetting;
   /** "Open Plannotator at plannotator.localhost" (#2184); Settings shows its row when present. */
   cookieHostSetting?: CookieHostSetting;
   /** The `plannotator` agent tool switch (parseAgentToolSetting of serverConfig); Settings shows its row. */
@@ -171,8 +166,6 @@ interface AppHeaderProps {
 
   // PlanHeaderMenu config
   appVersion: string;
-  updateInfo?: UpdateInfo | null;
-  isWSL?: boolean;
   agentInstructionsEnabled: boolean;
   obsidianConfigured: boolean;
   bearConfigured: boolean;
@@ -228,8 +221,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
   taterMode,
   mobileSettingsOpen,
   gitUser,
-  autoUpdateSetting,
-  updateCheckSetting,
   cookieHostSetting,
   agentToolSetting,
   onAgentToolChange,
@@ -263,8 +254,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
   onSaveToOctarine,
   onSaveToNotion,
   appVersion,
-  updateInfo,
-  isWSL,
   agentInstructionsEnabled,
   obsidianConfigured,
   bearConfigured,
@@ -508,8 +497,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
             externalOpen={mobileSettingsOpen}
             onExternalClose={onCloseSettings}
             gitUser={gitUser}
-            autoUpdateSetting={autoUpdateSetting}
-            updateCheckSetting={updateCheckSetting}
             cookieHostSetting={cookieHostSetting}
             agentToolSetting={agentToolSetting}
             onAgentToolChange={onAgentToolChange}
@@ -522,9 +509,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
 
         <PlanHeaderMenu
           appVersion={appVersion}
-          updateInfo={updateInfo}
-          origin={origin}
-          isWSL={isWSL}
           onOpenSettings={onOpenSettings}
           onOpenExport={onOpenExport}
           onCopyAgentInstructions={onCopyAgentInstructions}
