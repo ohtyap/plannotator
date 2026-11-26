@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { GIT_REPO_ENV } from "@plannotator/shared/child-env";
-import { loadConfig, resolveDefaultDiffType, resolveDefaultDiffTypeFor } from "@plannotator/shared/config";
+import { loadConfig, resolveDefaultDiffType } from "@plannotator/shared/config";
 import { parseReviewArgs, resolveReviewTarget, withReviewDirectory } from "@plannotator/shared/review-args";
 import { listBranches } from "@plannotator/shared/review-core";
 import { resolveReviewOpenState } from "@plannotator/shared/review-open-state";
@@ -52,7 +52,7 @@ export async function runReview(command: ReviewOptions): Promise<void> {
       parsed: args,
       isPRMode: false,
       isWorkspace,
-      providerId: providerId === "git" || providerId === "gitbutler" || providerId === "jj" || providerId === "p4"
+      providerId: providerId === "git" || providerId === "gitbutler" || providerId === "p4"
         ? providerId : undefined,
       resolvedDefaultDiffType: resolveDefaultDiffType(config),
       baseResolves,
@@ -65,7 +65,7 @@ export async function runReview(command: ReviewOptions): Promise<void> {
       const workspace = await buildLocalWorkspaceReview(reviewCwd, {
         configuredDiffType: resolveDefaultDiffType(config), hideWhitespace,
       });
-      if (!workspace.repos.length) throw new Error("Not in a VCS repo and no nested Git/JJ/GitButler repositories were found.");
+      if (!workspace.repos.length) throw new Error("Not in a supported VCS repo and no nested Git or GitButler repositories were found.");
       diff = { ...workspace, workspace, agentCwd: workspace.root };
     } else {
       const local = await prepareLocalReviewDiff({
@@ -73,12 +73,12 @@ export async function runReview(command: ReviewOptions): Promise<void> {
         vcsType: args.vcsType,
         requestedDiffType: open.requestedDiffType,
         requestedBase: open.requestedBase,
-        configuredDiffType: resolveDefaultDiffTypeFor(config, vcs?.id),
+        configuredDiffType: resolveDefaultDiffType(config),
         hideWhitespace,
       });
       diff = {
         ...local,
-        initialBase: open.requestedBase !== undefined || local.diffType === "jj-evolog" ? local.base : undefined,
+        initialBase: open.requestedBase !== undefined ? local.base : undefined,
         initialBaseExplicit: open.requestedBase !== undefined,
         initialFingerprint: local.fingerprint,
         initialFileIdentities: local.fileIdentities,

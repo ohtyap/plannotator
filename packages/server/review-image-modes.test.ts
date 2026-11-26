@@ -21,7 +21,7 @@ import { startReviewServer as startPiReviewServer } from '../../apps/pi-extensio
 import { setPRCommandRuntimeForTests as setPiPRRuntime } from '../../apps/pi-extension/server/pr';
 import { getVcsContext, runVcsDiff } from './vcs';
 
-const SAVED_ENV = ['PLANNOTATOR_AI', 'PLANNOTATOR_DATA_DIR', 'PLANNOTATOR_PORT', 'PLANNOTATOR_REMOTE', 'PLANNOTATOR_BROWSER', 'HOME'] as const;
+const SAVED_ENV = ['PLANNOTATOR_OPENCODE_URL', 'PLANNOTATOR_DATA_DIR', 'PLANNOTATOR_PORT', 'PLANNOTATOR_REMOTE', 'PLANNOTATOR_BROWSER', 'HOME'] as const;
 const original = Object.fromEntries(SAVED_ENV.map((k) => [k, process.env[k]]));
 const tempDirs: string[] = [];
 const stops: (() => void)[] = [];
@@ -121,7 +121,7 @@ describe('image diffs read both sides in each review mode', () => {
     ['Pi', startPiReviewServer, setPiPRRuntime],
   ] as const) {
     async function environment() {
-      process.env.PLANNOTATOR_AI = 'disabled';
+      process.env.PLANNOTATOR_OPENCODE_URL = '';
       process.env.PLANNOTATOR_REMOTE = '0';
       process.env.PLANNOTATOR_BROWSER = NO_BROWSER;
       process.env.PLANNOTATOR_DATA_DIR = tempDir('plannotator-image-modes-data-');

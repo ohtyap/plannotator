@@ -1,11 +1,9 @@
 import { describe, it, expect } from "bun:test";
-import { readFileSync } from "node:fs";
 import * as guideReview from "./guide-review";
 import * as coreGuidePrompt from "@plannotator/shared/guide-prompt";
 import {
   GUIDE_REVIEW_PROMPT,
   buildGuideMarkerOutputContract,
-  buildGuideUserMessage,
   composeGuideMarkerPrompt,
   composeGuideMethodology,
   createGuideSession,
@@ -13,7 +11,6 @@ import {
   parseGuideStreamOutput,
 } from "./guide-review";
 import { GUIDE_EXTRA_INSTRUCTIONS_MAX_CHARS } from "@plannotator/shared/guide";
-import type { DiffType } from "../vcs";
 import { extractMarkerNonce, markerClose, markerOpen } from "../marker-review";
 
 // Pins the behaviors the PR-993 review rounds fixed. This module previously
@@ -23,10 +20,6 @@ import { extractMarkerNonce, markerClose, markerOpen } from "../marker-review";
 
 const FILES = ["src/a.ts", "src/b.ts", "src/c.ts"];
 const PI_FIXTURE_NONCE = "pn0123456789ab";
-const piInsufficientCreditsStdout = readFileSync(
-  new URL("../fixtures/pi-insufficient-credits.ndjson", import.meta.url),
-  "utf8",
-);
 
 function guideJson(sections: unknown, extra: Record<string, unknown> = {}): string {
   return JSON.stringify({ title: "T", intent: "I", sections, unplacedFiles: [], ...extra });
@@ -187,162 +180,20 @@ describe("guide extra instructions (#1265)", () => {
     expect(extractMarkerNonce(composed)).toBe(PI_FIXTURE_NONCE);
   });
 
-  it("buildCommand without instructions produces the exact prior claude prompt bytes", async () => {
-    const session = createGuideSession();
-    const built = await session.buildCommand({
-      cwd: "/tmp",
-      patch: "diff",
-      diffType: "uncommitted" as DiffType,
-      config: { engine: "claude" },
-    });
-    const userMessage = buildGuideUserMessage("diff", "uncommitted" as DiffType, undefined, undefined, undefined);
-    expect(built.prompt).toBe(GUIDE_REVIEW_PROMPT + "\n\n---\n\n" + userMessage);
-    expect(built.stdinPrompt).toBe(built.prompt);
-  });
-
-  it("buildCommand threads config.instructions into the claude prompt", async () => {
-    const session = createGuideSession();
-    const built = await session.buildCommand({
-      cwd: "/tmp",
-      patch: "diff",
-      diffType: "uncommitted" as DiffType,
-      config: { engine: "claude", instructions: "Use product names." },
-    });
-    expect(built.prompt).toContain("## Additional reviewer instructions");
-    expect(built.prompt).toContain("Use product names.");
-    expect(built.prompt!.startsWith(GUIDE_REVIEW_PROMPT)).toBe(true);
-  });
-
-  it("repair launches ignore instructions (mechanical fix, not a content rewrite)", async () => {
-    const session = createGuideSession();
-    const built = await session.buildCommand({
-      cwd: "/tmp",
-      patch: "diff",
-      diffType: "uncommitted" as DiffType,
-      config: { engine: "claude", instructions: "Use product names." },
-      repair: { payload: "{}" },
-    });
-    expect(built.label).toBe("Guide Repair");
-    expect(built.prompt).not.toContain("## Additional reviewer instructions");
-    expect(built.prompt).not.toContain("Use product names.");
-  });
 });
 
-describe("createGuideSession Claude completion with several result events", () => {
-  it("captures the newest result's structured_output for repair, not a trailing empty result", async () => {
-    const jobId = "claude-invalid-then-empty";
-    // An output the parse rejects (no sections), then a trailing empty result:
-    // the repair UI must still get the rejected output to start from.
-    const rejected = { title: "T", intent: "I", sections: [] };
-    const stdout = [
-      JSON.stringify({ type: "result", is_error: false, result_index: 0, structured_output: rejected }),
-      JSON.stringify({ type: "result", is_error: false, num_turns: 0, result_index: 1 }),
-    ].join("\n");
-    const session = createGuideSession();
-    const result = await session.onJobComplete({ job: { id: jobId, engine: "claude" }, meta: { stdout }, changedFiles: FILES });
-    expect(result.summary).toBeNull();
-    expect(JSON.parse(session.getFailedPayload(jobId) ?? "null")).toEqual(rejected);
+it("captures an invalid OpenCode output block for repair without publishing a guide", async () => {
+  const session = createGuideSession();
+  const id = "invalid";
+  const payload = '{"sections":[]}';
+  const result = await session.onJobComplete({
+    job: { id, prompt: composeGuideMarkerPrompt("Review the changed files.", PI_FIXTURE_NONCE) },
+    meta: { text: `${markerOpen(PI_FIXTURE_NONCE)}${payload}${markerClose(PI_FIXTURE_NONCE)}\nOther prose` },
+    changedFiles: FILES,
   });
-
-  it("completes a guide delivered by an earlier result event", async () => {
-    const jobId = "claude-valid-then-empty";
-    const guide = JSON.parse(guideJson([{ title: "Early", overview: "o", diffs: [{ file: "src/a.ts", summary: "A." }] }]));
-    const stdout = [
-      JSON.stringify({ type: "result", is_error: false, result_index: 0, structured_output: guide }),
-      JSON.stringify({ type: "result", is_error: true, num_turns: 0, result_index: 1 }),
-    ].join("\n");
-    const session = createGuideSession();
-    const result = await session.onJobComplete({ job: { id: jobId, engine: "claude" }, meta: { stdout }, changedFiles: FILES });
-    expect(result.summary?.correctness).toBe("Guide Generated");
-    expect(session.getGuide(jobId)?.sections[0].title).toBe("Early");
-  });
-});
-
-describe("createGuideSession marker completion", () => {
-  it("surfaces a Pi provider failure instead of classifying exit-0 NDJSON as malformed guide output", async () => {
-    const session = createGuideSession();
-    const result = await session.onJobComplete({
-      job: {
-        id: "pi-insufficient-credits",
-        engine: "pi",
-        prompt: composeGuideMarkerPrompt("Review the changed files.", PI_FIXTURE_NONCE),
-      },
-      meta: { stdout: piInsufficientCreditsStdout },
-      changedFiles: FILES,
-    });
-
-    expect(result).toEqual({ summary: null, error: "Insufficient API credits" });
-    expect(session.failedPayloads.has("pi-insufficient-credits")).toBe(false);
-  });
-
-  it("keeps ordinary malformed Pi output on the strict parse and repair path", async () => {
-    const jobId = "pi-malformed-guide";
-    const stdout = JSON.stringify({
-      type: "message_end",
-      message: {
-        role: "assistant",
-        content: [{ type: "text", text: "I could not format the guide." }],
-        stopReason: "stop",
-      },
-    });
-    const session = createGuideSession();
-
-    const result = await session.onJobComplete({
-      job: {
-        id: jobId,
-        engine: "pi",
-        prompt: composeGuideMarkerPrompt("Review the changed files.", PI_FIXTURE_NONCE),
-      },
-      meta: { stdout },
-      changedFiles: FILES,
-    });
-
-    expect(result).toEqual({ summary: null });
-    expect(session.failedPayloads.has(jobId)).toBe(true);
-    expect(session.getGuide(jobId)).toBeNull();
-  });
-
-  it("preserves a valid marker guide after an earlier transient Pi error event", async () => {
-    const jobId = "pi-recovered-guide";
-    const validGuide = guideJson([
-      {
-        title: "Recovered",
-        overview: "The retry completed.",
-        diffs: [{ file: "src/a.ts", summary: "Updates A." }],
-      },
-    ]);
-    const transientErrorPrefix = piInsufficientCreditsStdout
-      .trimEnd()
-      .split("\n")
-      .slice(0, 5)
-      .join("\n");
-    const successfulMessage = JSON.stringify({
-      type: "message_end",
-      message: {
-        role: "assistant",
-        content: [{
-          type: "text",
-          text: `${markerOpen(PI_FIXTURE_NONCE)}\n${validGuide}\n${markerClose(PI_FIXTURE_NONCE)}`,
-        }],
-        stopReason: "stop",
-      },
-    });
-    const session = createGuideSession();
-
-    const result = await session.onJobComplete({
-      job: {
-        id: jobId,
-        engine: "pi",
-        prompt: composeGuideMarkerPrompt("Review the changed files.", PI_FIXTURE_NONCE),
-      },
-      meta: { stdout: `${transientErrorPrefix}\n${successfulMessage}\n` },
-      changedFiles: FILES,
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(result.summary?.correctness).toBe("Guide Generated");
-    expect(session.getGuide(jobId)?.sections[0].title).toBe("Recovered");
-  });
+  expect(result.summary).toBeNull();
+  expect(session.getGuide(id)).toBeNull();
+  expect(session.getFailedPayload(id)).toBe(payload);
 });
 
 describe("createGuideSession launch review memo (portable export)", () => {
@@ -355,8 +206,8 @@ describe("createGuideSession launch review memo (portable export)", () => {
   it("records the launch review on the failure path too, so a repair or export sees the same diff", async () => {
     const session = createGuideSession();
     await session.onJobComplete({
-      job: { id: "failed-1", engine: "pi", prompt: composeGuideMarkerPrompt("x", PI_FIXTURE_NONCE) },
-      meta: { stdout: "not json" },
+      job: { id: "failed-1", prompt: composeGuideMarkerPrompt("x", PI_FIXTURE_NONCE) },
+      meta: { text: "not json" },
       changedFiles: FILES,
       launchReview: review(1),
     });
@@ -369,8 +220,8 @@ describe("createGuideSession launch review memo (portable export)", () => {
     const session = createGuideSession();
     for (let i = 0; i < 25; i++) {
       await session.onJobComplete({
-        job: { id: `job-${i}`, engine: "pi", prompt: composeGuideMarkerPrompt("x", PI_FIXTURE_NONCE) },
-        meta: { stdout: "not json" },
+        job: { id: `job-${i}`, prompt: composeGuideMarkerPrompt("x", PI_FIXTURE_NONCE) },
+        meta: { text: "not json" },
         changedFiles: FILES,
         launchReview: review(i),
       });

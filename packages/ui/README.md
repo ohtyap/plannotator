@@ -18,6 +18,7 @@ import { configurePlannotatorUI } from "@plannotator/ui/configure";
 configurePlannotatorUI({
   storageBackend,              // where settings persist
   identityProvider,           // who the current user is
+  annotationIdentity,         // false: no annotation author settings, stamping, or bylines
   imageSrcResolver,           // how image paths resolve to URLs
   uploadTransport,             // where pasted/attached images upload to
   docPreviewFetcher,
@@ -286,7 +287,6 @@ The srcdoc then carries one classic `<script src>` in the exact place the inline
 `components/AnnotationToolstrip` is supported host surface: the annotation mode toolstrip with per-tool opt-outs, all defaulting to today's rendering.
 
 - **`hideQuickLabel`** omits the Quick Label tool. `StickyHeaderLane` forwards it, so the pinned scroll header stays consistent. It hides the button only — it does not clamp the mode, so keep host mode state out of `'quickLabel'` (including preferences restored through `utils/editorMode`).
-- **`showHelpLink={false}`** for hosts: the default help modal embeds Plannotator's own video walkthroughs.
 - **`hideInputMethodSwitch`** omits the pinpoint/drag input-method switch.
 
 #### Sticky header lane host props
@@ -871,7 +871,7 @@ npm install @plannotator/ui @plannotator/core
    - Set the mode on `<html>` as `ThemeProvider` does: the sheet reads `:root.light`. `styles.css` also holds every transition at 0 s until `<html>` has `.transitions-ready`, which `ThemeProvider` adds after mount. A theme switch lands in one frame: while `<html>` has `.pn-theme-switching` (`THEME_SWITCHING_CLASS`), `styles.css` sets every transition's duration and delay to 0 s. `ThemeProvider` holds it on every switch, from the class swap until two frames after the redraw commits. A host that swaps the theme classes on `<html>` itself calls `holdThemeSwitch()` (from `components/ThemeProvider`) just before its swap: it adds the class and removes it two frames later. A part that redraws in the new theme a frame later (it reads the new tokens in `requestAnimationFrame`, as the Pierre diff parts do) calls `extendThemeSwitch()` just before that redraw, which restarts the two frames while a switch is landing and does nothing otherwise. The rule covers the whole page with `!important`: for those 2 to 3 frames after each switch, every transition on the page lands at once, the host's own included (an animated sun/moon icon jumps instead of turning, and the host's colour fades are instant). A transition already running finishes normally.
    - Portal into the root: the sheet styles nothing outside it.
 
-**Upgrade note: the plan look defaults to Clean.** `gridEnabled` (storage key `plannotator-grid-enabled`) now defaults to `false`, and a stored value counts only with the v2 marker `plannotator-plan-look-v2 = 'resolved'`. Plannotator's chooser and its Settings switch write it. On the first settings read, a v1 marker (`plannotator-plan-look-choice-resolved = 'true'`, or the legacy `plannotator-look-feel-announcement-seen = '2'`) next to a stored `'true'` is moved to Clean once (the stored value is rewritten to `'false'` and the v2 key set to `'notice'`); a v1 marker with Clean becomes `'resolved'` silently. Plannotator's apps then show a one-time notice. That includes the share portal's root and demo pages; only a shared session puts it off. A host that renders no chooser (Workspaces) shows nothing, so its users simply open in Clean, and every user with no marker opens in Clean too. To keep stored values instead, call `markLookAndFeelChoiceResolved()` from `@plannotator/ui/utils/lookAndFeelAnnouncement` before the first settings read, or seed `plannotator-plan-look-v2 = 'resolved'` in your `storageBackend`. A host that writes `gridEnabled` from its own UI should call `markLookAndFeelChoiceResolved()` with it, or the value will not survive a reload.
+**The document look defaults to Clean.** `gridEnabled` (storage key `plannotator-grid-enabled`) defaults to `false`. A stored Grid choice still applies. Standalone Annotate changes the look in Settings → Display → Grid Background; there is no startup chooser or accompanying marker.
 
 ## Packages & publishing
 

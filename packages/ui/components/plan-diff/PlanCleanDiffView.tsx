@@ -28,7 +28,7 @@ import type { QuickLabel } from "../../utils/quickLabels";
 import { AnnotationToolbar } from "../AnnotationToolbar";
 import { CommentPopover } from "../CommentPopover";
 import { FloatingQuickLabelPicker } from "../FloatingQuickLabelPicker";
-import { getIdentity } from "../../utils/identity";
+import { getAnnotationAuthor } from "../../utils/identity";
 import { UNAVAILABLE_IMAGE_CLASS, useImageResolver } from "../ImageResolverContext";
 import { useLocalLinkMatch, useLocalLinkResolver } from "../LocalLinkContext";
 import { useHighlightCopy } from "../../utils/highlightCopy";
@@ -251,7 +251,7 @@ export const PlanCleanDiffView: React.FC<PlanCleanDiffViewProps> = ({
       text,
       originalText: content,
       createdA: now,
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       images,
       diffContext,
       ...(isQuickLabel ? { isQuickLabel: true } : {}),

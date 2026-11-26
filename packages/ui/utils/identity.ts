@@ -12,6 +12,7 @@
 
 import { configStore } from '../config';
 import { generateIdentity } from './generateIdentity';
+import { annotationIdentityEnabled } from './annotationIdentityPolicy';
 
 /**
  * Host-overridable identity provider.
@@ -71,7 +72,12 @@ export function resetIdentityProvider(): void {
  * Get current identity. Delegates to the active provider (default = ConfigStore tater).
  */
 export function getIdentity(): string {
-  return identityProvider.getIdentity();
+  return annotationIdentityEnabled() ? identityProvider.getIdentity() : '';
+}
+
+/** Omit author metadata when identity is disabled. */
+export function getAnnotationAuthor(): string | undefined {
+  return getIdentity() || undefined;
 }
 
 /**
@@ -79,6 +85,7 @@ export function getIdentity(): string {
  * Writes to cookie (sync) + queues server write-back (async) via ConfigStore.
  */
 export function setCustomIdentity(name: string): string {
+  if (!annotationIdentityEnabled()) return '';
   const trimmed = name.trim();
   if (!trimmed) return getIdentity(); // reject empty
   configStore.set('displayName', trimmed);
@@ -90,6 +97,7 @@ export function setCustomIdentity(name: string): string {
  * Writes to cookie + queues server write-back via ConfigStore.
  */
 export function regenerateIdentity(): string {
+  if (!annotationIdentityEnabled()) return '';
   const identity = generateIdentity();
   configStore.set('displayName', identity);
   return identity;
@@ -99,7 +107,7 @@ export function regenerateIdentity(): string {
  * Check if an identity belongs to the current user. Delegates to the active provider.
  */
 export function isCurrentUser(author: string | undefined): boolean {
-  return identityProvider.isCurrentUser(author);
+  return annotationIdentityEnabled() && identityProvider.isCurrentUser(author);
 }
 
 /**
@@ -108,5 +116,5 @@ export function isCurrentUser(author: string | undefined): boolean {
  * defaults to editable when the provider doesn't implement `isEditable`.
  */
 export function isIdentityEditable(): boolean {
-  return identityProvider.isEditable ? identityProvider.isEditable() : true;
+  return annotationIdentityEnabled() && (identityProvider.isEditable?.() ?? true);
 }

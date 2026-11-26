@@ -7,7 +7,6 @@ import {
 } from '@plannotator/ui/components/ActionMenu';
 import { useTheme } from '@plannotator/ui/components/ThemeProvider';
 import { THEME_MODES } from '@plannotator/ui/components/themeModes';
-import { MenuVersionSection } from '@plannotator/ui/components/MenuVersionSection';
 import { ReviewAgentsIcon } from '@plannotator/ui/components/ReviewAgentsIcon';
 import { SparklesIcon } from '@plannotator/ui/components/SparklesIcon';
 import { PRPlatformIcon } from '@plannotator/ui/components/PRPlatformIcon';
@@ -30,7 +29,6 @@ export interface CompactReviewAction {
 
 interface ReviewHeaderMenuProps {
   onOpenSettings: () => void;
-  onOpenExport: () => void;
   onCopyAgentInstructions: () => void;
   onToggleFileTree: () => void;
   onToggleSidebar: () => void;
@@ -44,12 +42,10 @@ interface ReviewHeaderMenuProps {
   isSidebarOpen: boolean;
   compactTouchLayout?: boolean;
   agentInstructionsEnabled: boolean;
-  appVersion: string;
 }
 
 export const ReviewHeaderMenu: React.FC<ReviewHeaderMenuProps> = ({
   onOpenSettings,
-  onOpenExport,
   onCopyAgentInstructions,
   onToggleFileTree,
   onToggleSidebar,
@@ -63,7 +59,6 @@ export const ReviewHeaderMenu: React.FC<ReviewHeaderMenuProps> = ({
   isSidebarOpen,
   compactTouchLayout = false,
   agentInstructionsEnabled,
-  appVersion,
 }) => {
   const { theme, setTheme } = useTheme();
 
@@ -183,14 +178,6 @@ export const ReviewHeaderMenu: React.FC<ReviewHeaderMenuProps> = ({
             icon={<SettingsIcon />}
             label="Settings"
           />
-          <ActionMenuItem
-            onClick={() => {
-              closeMenu();
-              onOpenExport();
-            }}
-            icon={<ExportIcon />}
-            label="Export"
-          />
           {agentInstructionsEnabled && (
             <ActionMenuItem
               onClick={() => {
@@ -274,10 +261,6 @@ export const ReviewHeaderMenu: React.FC<ReviewHeaderMenuProps> = ({
               badge={<KbdHint keys={[modKey, '.']} />}
             />
           )}
-
-          <ActionMenuDivider />
-
-          <MenuVersionSection appVersion={appVersion} closeMenu={closeMenu} />
         </>
       )}
     </ActionMenu>

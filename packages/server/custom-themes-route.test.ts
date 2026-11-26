@@ -21,7 +21,7 @@ import { startReviewServer } from "./review";
 
 const MINIMAL_HTML = '<html><head><script  src="/plannotator-themes.js"></script></head><body>Plannotator</body></html>';
 const PATCH = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n";
-const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_AI"] as const;
+const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_OPENCODE_URL"] as const;
 const saved: Record<string, string | undefined> = {};
 let dataDir: string;
 
@@ -30,7 +30,7 @@ beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), "plannotator-custom-themes-route-"));
   process.env.PLANNOTATOR_DATA_DIR = dataDir;
   process.env.PLANNOTATOR_REMOTE = "0";
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   delete process.env.PLANNOTATOR_PORT;
 });
 

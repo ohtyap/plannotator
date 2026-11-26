@@ -78,7 +78,7 @@ export function defineOpenInScenarios(runtime: string, start: StartOpenInScenari
       "PLANNOTATOR_REMOTE",
       "PLANNOTATOR_DATA_DIR",
       "PLANNOTATOR_BROWSER",
-      "PLANNOTATOR_AI",
+      "PLANNOTATOR_OPENCODE_URL",
       "PLANNOTATOR_INBOX_CONNECT",
       "SSH_TTY",
       "SSH_CONNECTION",
@@ -104,7 +104,7 @@ export function defineOpenInScenarios(runtime: string, start: StartOpenInScenari
         process.env.PATH = originalPath;
         process.env.PLANNOTATOR_DATA_DIR = join(dir, "data");
         process.env.PLANNOTATOR_BROWSER = "/usr/bin/true";
-        process.env.PLANNOTATOR_AI = "disabled";
+        process.env.PLANNOTATOR_OPENCODE_URL = "";
         process.env.PLANNOTATOR_INBOX_CONNECT = "0";
         process.env.PLANNOTATOR_REMOTE = "0";
 

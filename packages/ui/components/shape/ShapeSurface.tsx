@@ -1231,7 +1231,6 @@ export function ShapeSurface({ host, id, onClose, onCode, CodeGuide, CodeHoverCa
                   onModeChange={setMode}
                   compact
                   iconOnly
-                  showHelpLink={false}
                   hideQuickLabel
                   hideRedline
                 />
@@ -1282,7 +1281,6 @@ export function ShapeSurface({ host, id, onClose, onCode, CodeGuide, CodeHoverCa
                     onModeChange={() => {}}
                     compact
                     iconOnly
-                    showHelpLink={false}
                     hideActionModes
                   />
                 )}
@@ -1491,4 +1489,3 @@ export function ShapeSurface({ host, id, onClose, onCode, CodeGuide, CodeHoverCa
     </RefsCtx.Provider>
   );
 }
-

@@ -28,7 +28,7 @@
     "build": "bun run build:review && bun run build:annotate",
     "build:cli": "bun run build && bun scripts/compile-cli.ts",
     "build:viewer-pin": "rm -f apps/guides-show/dist/viewer/manifest.json && bun run --cwd apps/guides-show build:viewer && bun run --cwd apps/guides-show sync:manifest",
-    "test": "bun run test:sandbox apps/cli/server/annotate-command.test.ts apps/cli/server/annotate-output.test.ts apps/cli/server/annotate-resolution.test.ts apps/cli/server/strict-annotate-result.test.ts apps/cli/server/review-output.test.ts packages/server/annotate-bundle.test.ts packages/server/annotate-draft.test.ts packages/server/annotate-live-version.test.ts packages/server/live-proxy.test.ts packages/server/request-host.test.ts packages/server/review-workspace.test.ts packages/shared/annotate-target.test.ts packages/shared/annotate-client-lease.test.ts packages/shared/review-core.test.ts packages/shared/review-open-state.test.ts packages/shared/review-draft.test.ts packages/ai/ai.test.ts -- --timeout=15000",
+    "test": "bun run test:sandbox apps/cli/server/annotate-command.test.ts apps/cli/server/annotate-output.test.ts apps/cli/server/annotate-resolution.test.ts apps/cli/server/strict-annotate-result.test.ts apps/cli/server/review-output.test.ts packages/server/annotate-bundle.test.ts packages/server/annotate-draft.test.ts packages/server/annotate-live-version.test.ts packages/server/live-proxy.test.ts packages/server/request-host.test.ts packages/server/review-workspace.test.ts packages/shared/annotate-target.test.ts packages/shared/annotate-client-lease.test.ts packages/shared/review-core.test.ts packages/shared/review-open-state.test.ts packages/shared/review-draft.test.ts packages/ai/ai.test.ts packages/ai/providers/opencode-v2.test.ts packages/server/open-code-review.test.ts -- --timeout=15000",
     "test:sandbox": "bun scripts/test-sandbox.ts",
     "test:cli": "bun test --timeout 20000 tests/standalone-cli.smoke.test.ts",
     "postinstall": "bun apps/guides-show/build/sync-manifest.ts --if-missing",
@@ -37,8 +37,6 @@
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.303",
-    "@opencode-ai/sdk": "1.19.3",
     "@pierre/diffs": "1.7.0-beta.3",
     "diff": "^8.0.4",
     "dockview-react": "^5.2.0",
@@ -66,7 +64,6 @@
     "katex": "^0.19.0"
   },
   "patchedDependencies": {
-    "@opencode-ai/sdk@1.19.3": "patches/@opencode-ai%2Fsdk@1.19.3.patch",
     "@pierre/diffs@1.7.0-beta.3": "patches/@pierre%2Fdiffs@1.7.0-beta.3.patch",
     "@pierre/trees@1.0.0": "patches/@pierre%2Ftrees@1.0.0.patch"
   }

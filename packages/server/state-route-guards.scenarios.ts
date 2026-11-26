@@ -103,7 +103,8 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
       "PLANNOTATOR_REMOTE",
       "PLANNOTATOR_DATA_DIR",
       "PLANNOTATOR_BROWSER",
-      "PLANNOTATOR_AI",
+      "PLANNOTATOR_OPENCODE_URL",
+      "OPENCODE_PASSWORD",
       "PLANNOTATOR_INBOX_CONNECT",
       "PLANNOTATOR_FEEDBACK_HISTORY",
       "PLANNOTATOR_ALLOWED_HOSTS",
@@ -115,6 +116,7 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
   );
 
   let server: StateRouteScenarioServer | null = null;
+  let openCode: ReturnType<typeof Bun.serve> | undefined;
   let host = "";
   let serverSession = "";
   let emptyPath = "";
@@ -123,14 +125,12 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
   afterEach(() => {
     server?.stop();
     server = null;
+    openCode?.stop(true);
+    openCode = undefined;
     environment.restore();
   });
 
-  /**
-   * `agentJobs`: the job routes need AI on (they answer 503 when it is off).
-   * The server then starts with PATH holding only an empty folder, so it
-   * detects no agent CLI and no provider is available to launch.
-   */
+  /** Job requests need a V2 health probe to pass before reaching validation. */
   async function setUp(kind: StateRouteScenarioKind, options: { agentJobs?: boolean; env?: Record<string, string> } = {}): Promise<void> {
     const originalPath = process.env.PATH ?? "";
     environment.reset();
@@ -138,7 +138,7 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
     process.env.PATH = originalPath;
     process.env.PLANNOTATOR_DATA_DIR = join(dir, "data");
     process.env.PLANNOTATOR_BROWSER = "/usr/bin/true";
-    if (!options.agentJobs) process.env.PLANNOTATOR_AI = "disabled";
+    process.env.PLANNOTATOR_OPENCODE_URL = "";
     process.env.PLANNOTATOR_INBOX_CONNECT = "0";
     process.env.PLANNOTATOR_FEEDBACK_HISTORY = "0";
     process.env.PLANNOTATOR_REMOTE = "0";
@@ -149,12 +149,20 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
     const root = environment.makeTempDir();
     const docPath = join(root, "notes.md");
     writeFileSync(docPath, "# Notes\n");
-    if (options.agentJobs) process.env.PATH = emptyPath;
-    try {
-      server = await start(kind, { root, docPath, htmlContent: HTML });
-    } finally {
-      process.env.PATH = originalPath;
+    if (options.agentJobs) {
+      openCode = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(req) {
+          return new URL(req.url).pathname === "/api/info"
+            ? Response.json({ version: "2.4.1" })
+            : new Response(null, { status: 404 });
+        },
+      });
+      process.env.PLANNOTATOR_OPENCODE_URL = openCode.url.origin;
+      delete process.env.OPENCODE_PASSWORD;
     }
+    server = await start(kind, { root, docPath, htmlContent: HTML });
     host = new URL(server.url).host;
     const first = (await (await fetch(`${server.url}${FIRST_READ[kind]}`)).json()) as { serverSession?: unknown };
     serverSession = typeof first.serverSession === "string" ? first.serverSession : "";
@@ -376,7 +384,6 @@ export function defineStateRouteScenarios(runtime: string, start: StartStateRout
         // Past both guards: the provider does not exist, so nothing launches.
         const launch = await call("POST", "/api/agents/jobs", headers, { provider: "not-a-provider", serverSession });
         expect(launch.status).toBe(400);
-        expect(String(launch.body?.error)).toContain("Unknown or unavailable provider");
         const killAll = await call("DELETE", `/api/agents/jobs?serverSession=${serverSession}`, headers);
         expect(killAll.status).toBe(200);
         expect(killAll.body).toEqual({ ok: true, killed: 0 });

@@ -5,7 +5,7 @@ import { AnnotationType, type Annotation, type Block } from '../types';
 import { useConfigValue } from '../config';
 import type { DiagramTheme } from '../utils/diagram-render';
 import { diagramShadowAmount } from '../utils/diagramShadow';
-import { getIdentity } from '../utils/identity';
+import { getAnnotationAuthor } from '../utils/identity';
 import { createRuntimeRetryEpoch } from '../utils/runtimeRetry';
 import { DiagramAnchorClaims, DiagramAnchorClaimsContext } from './diagram/anchorClaims';
 import { DiagramPending, DiagramInlineSource } from './diagram/DiagramPending';
@@ -235,7 +235,7 @@ export const DiagramBlock: React.FC<DiagramBlockProps & { kind: DiagramKind }> =
         text,
         originalText: diagramTargetText(anchor),
         createdA: Date.now(),
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
         diagramAnchor: anchor,
       });
     };

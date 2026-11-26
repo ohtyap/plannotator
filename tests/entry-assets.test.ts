@@ -66,18 +66,13 @@ describe('review entry assets', () => {
     expect(highlighter).not.toMatch(/https?:\/\//);
   });
 
-  // @plannotator/ui loads KaTeX and the username dictionary through slots
-  // (utils/math.ts, utils/generateIdentity.ts) so hosts that bundle by route
-  // can leave them out of a document read. Plannotator's parity rests on two
-  // side-effect imports per app entry: without them, plans with math would
-  // paint TeX for a frame in every runtime and identities would come from the
-  // 16-word fallback pool, with no error anywhere. Both apps must carry both.
+  // Standalone apps paint math immediately without bundling the username dictionary.
   test.each(['packages/editor/App.tsx', 'packages/review-editor/App.tsx'])(
-    '%s registers the eager math renderer and identity dictionary',
+    '%s registers the eager math renderer without the identity dictionary',
     (path) => {
       const source = read(path);
       expect(source).toContain("import '@plannotator/ui/utils/math-eager';");
-      expect(source).toContain("import '@plannotator/ui/utils/identity-tater';");
+      expect(source).not.toContain("import '@plannotator/ui/utils/identity-tater';");
     },
   );
 
@@ -518,12 +513,6 @@ describe('marketing embeds', () => {
     const content = read(path);
     expect(content).not.toContain('www.youtube.com/embed/');
     expect(content).toContain('www.youtube-nocookie.com/embed/');
-  });
-
-  test('the in-app help dialog uses YouTube privacy-enhanced embeds', () => {
-    const toolstrip = read('packages/ui/components/AnnotationToolstrip.tsx');
-    expect(toolstrip).not.toContain('www.youtube.com/embed/');
-    expect(toolstrip).toContain('www.youtube-nocookie.com/embed/');
   });
 
   test('the Tater sprite sheets reach only the plan editor, which registers them', () => {

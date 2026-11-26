@@ -10,7 +10,7 @@
 | `packages/editor/` | Document annotation UI |
 | `packages/guide-viewer/` | Guided Review UI |
 | `packages/ui/`, `packages/core/`, `packages/shared/` | Shared components and browser-safe and server helpers |
-| `packages/ai/` | Optional standalone Ask AI providers |
+| `packages/ai/` | OpenCode V2 HTTP client and Ask AI sessions |
 
 ```sh
 bun install --frozen-lockfile

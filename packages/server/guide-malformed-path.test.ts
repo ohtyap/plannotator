@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { NO_BROWSER } from "../../tests/helpers/no-browser.ts";
 import { startReviewServer } from "./review";
 
-const ENV_KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_AI", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_BROWSER"] as const;
+const ENV_KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_BROWSER"] as const;
 const saved: Record<string, string | undefined> = {};
 let dataDir = "";
 
@@ -19,7 +19,7 @@ beforeAll(() => {
   for (const key of ENV_KEYS) saved[key] = process.env[key];
   dataDir = mkdtempSync(join(tmpdir(), "plannotator-guide-malformed-path-"));
   process.env.PLANNOTATOR_DATA_DIR = dataDir;
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_REMOTE = "0";
   process.env.PLANNOTATOR_BROWSER = NO_BROWSER;
   delete process.env.PLANNOTATOR_PORT;

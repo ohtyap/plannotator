@@ -55,6 +55,7 @@ export const DIAGRAM_ENGINE_SHARED_MODULES = [
   'ui:components/ThemeProvider',
   'ui:config/index',
   'ui:utils/identity',
+  'ui:utils/annotationIdentityPolicy',
   'ui:utils/math',
   'ui:utils/commentDraftScope',
   'ui:components/diagramSvgAccept',

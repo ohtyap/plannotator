@@ -25,8 +25,7 @@ export const PermissionModeSetup: React.FC<PermissionModeSetupProps> = ({
   };
 
   return createPortal(
-    // Same bounded shell as the sibling one-time dialogs (see
-    // LookAndFeelAnnouncementDialog): safe-area padding, a card capped to the
+    // Safe-area padding, a card capped to the
     // visible viewport, and the option list as the only scrolling region. The
     // hand-rolled unbounded card used to overflow both edges of a short
     // landscape phone with nothing left to tap.

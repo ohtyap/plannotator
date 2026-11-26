@@ -288,19 +288,21 @@ describe.if(hasDom)("App document permissions", () => {
     expect(requestedRoutes).not.toContain("POST /api/approve");
     expect(requestedRoutes).not.toContain("POST /api/deny");
 
-    const exportButton = findButton("Export");
-    if (!exportButton) throw new Error("Export menu item did not render");
-    await act(async () => exportButton.click());
-    expect(findButton("Notes")).toBeUndefined();
+    expect(findButton("Export")).toBeUndefined();
   });
 
-  test("normal annotate remains writable", async () => {
+  test("normal annotate remains writable without the export menu or shortcut", async () => {
     configureNotesApps();
+    noteSettings.set("plannotator-default-notes-app", "download");
+    noteSettings.set("plannotator-filebrowser-enabled", "true");
+    noteSettings.set("plannotator-filebrowser-dirs", '["/tmp/other"]');
+    noteSettings.set("plannotator-identity", "Old browser name");
     await mountApp({
       plan: "# Writable document",
       origin: "codex",
       mode: "annotate",
       filePath: "/tmp/writable.md",
+      projectRoot: "/tmp",
       sharingEnabled: false,
       serverConfig: {},
     });
@@ -313,9 +315,19 @@ describe.if(hasDom)("App document permissions", () => {
     const optionsButton = document.querySelector<HTMLButtonElement>('button[title="Options"]');
     if (!optionsButton) throw new Error("Options menu trigger did not render");
     await act(async () => optionsButton.click());
-    expect(findButton("Save to Obsidian")).not.toBeUndefined();
-    expect(findButton("Save to Bear")).not.toBeUndefined();
-    expect(findButton("Save to Octarine")).not.toBeUndefined();
+    expect(findButton("Save to Obsidian")).toBeUndefined();
+    expect(findButton("Download Annotations")).toBeUndefined();
+    expect(findButtonContaining("Print / Save as PDF")).toBeUndefined();
+    expect(document.querySelector('[title="File Browser"], [aria-haspopup="dialog"][aria-label="Choose a file"]')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/how does this work/i);
+    await act(async () => findButton("Settings")?.click());
+    expect(document.body.textContent).toContain("Enter saves a comment");
+    expect(document.body.textContent).not.toContain("Your Identity");
+    expect(document.body.textContent).not.toContain("Hide the repository owner");
+    expect(document.body.textContent).not.toContain("Integrations");
+    expect(document.querySelector('header a[href="https://plannotator.ai"]')).toBeNull();
+    expect(document.querySelector('input[value="Old browser name"]')).toBeNull();
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Close settings"]')?.click());
 
     requestedRoutes = [];
     await act(async () => {
@@ -325,7 +337,10 @@ describe.if(hasDom)("App document permissions", () => {
       }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(requestedRoutes).toContain("POST /api/save-notes");
+    expect(findButton("Export")).toBeUndefined();
+    expect([...document.querySelectorAll("h3")].some((heading) => heading.textContent === "Export")).toBe(false);
+    expect(findButton("Download Annotations")).toBeUndefined();
+    expect(requestedRoutes).not.toContain("POST /api/save-notes");
   });
 
   test("compact touch presents a reading-first file surface without mutating desktop preferences", async () => {
@@ -447,7 +462,7 @@ describe.if(hasDom)("App document permissions", () => {
     expect(requestedRoutes).toContain("POST /api/approve");
   });
 
-  test("compact folder selection closes the navigator after the async document activation", async () => {
+  test("compact folder selection closes the picker after the async document activation", async () => {
     configureNotesApps();
     useCompactTouchMedia();
     useSingleFileTree();
@@ -473,7 +488,9 @@ describe.if(hasDom)("App document permissions", () => {
     }
     const alphaFile = findButtonContaining("alpha");
     if (!alphaFile) throw new Error("Folder tree did not load alpha.md");
-    expect(document.querySelector("[data-pn-plan-navigator]")).not.toBeNull();
+    const pickerOpen = () => !!document.querySelector('[data-popout="true"][role="dialog"]');
+    expect(pickerOpen()).toBe(true);
+    expect(document.querySelector("[data-pn-plan-navigator]")).toBeNull();
 
     let releaseDocumentLoad: (() => void) | undefined;
     documentLoadGate = new Promise<void>((resolve) => {
@@ -484,9 +501,8 @@ describe.if(hasDom)("App document permissions", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const pendingNavigator = document.querySelector<HTMLElement>("[data-pn-plan-navigator]");
-    expect(pendingNavigator).not.toBeNull();
-    expect(pendingNavigator?.textContent).toContain("Opening alpha.md…");
+    expect(pickerOpen()).toBe(true);
+    expect(alphaFile.textContent).toContain("Opening…");
     expect(alphaFile.disabled).toBe(true);
     expect(alphaFile.getAttribute("aria-busy")).toBe("true");
 
@@ -495,7 +511,7 @@ describe.if(hasDom)("App document permissions", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(document.querySelector("[data-pn-plan-navigator]")).toBeNull();
+    expect(pickerOpen()).toBe(false);
     expect(document.body.textContent).toContain("Selected file");
     expect(document.querySelector("[data-pn-compact-document-title]")?.textContent).toBe("alpha.md");
   });

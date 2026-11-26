@@ -27,7 +27,7 @@ Run the raw-HTML fixture through the real annotate server:
 ```bash
 PLANNOTATOR_REMOTE=1 \
 PLANNOTATOR_PORT=3019 \
-PLANNOTATOR_AI=disabled \
+PLANNOTATOR_OPENCODE_URL= \
 PLANNOTATOR_SHARE=disabled \
 bun apps/hook/server/index.ts annotate tests/test-fixtures/vim-ux-smoke.html
 ```

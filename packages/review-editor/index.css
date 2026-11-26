@@ -2550,7 +2550,7 @@ html:has([data-pn-compact-touch-layout='true']) :is(.review-sidebar .file-tree-i
   min-height: var(--pn-touch-target);
   height: var(--pn-touch-target);
 }
-html:has([data-pn-compact-touch-layout='true']) :is([data-panel-view], [data-tree-scope], [data-panel-sentence] button, [data-menu-version] a) {
+html:has([data-pn-compact-touch-layout='true']) :is([data-panel-view], [data-tree-scope], [data-panel-sentence] button) {
   min-block-size: var(--pn-touch-target);
   touch-action: manipulation;
 }
@@ -2558,11 +2558,6 @@ html:has([data-pn-compact-touch-layout='true']) :is([data-go-to-file-button], [d
   min-block-size: var(--pn-touch-target);
   min-inline-size: var(--pn-touch-target);
 }
-html:has([data-pn-compact-touch-layout='true']) [data-menu-version] a {
-  display: inline-flex;
-  align-items: center;
-}
-
 html:has([data-pn-compact-touch-layout='true']) [data-review-sidebar-tab] {
   min-width: var(--pn-touch-target);
 }

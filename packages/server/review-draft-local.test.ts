@@ -26,7 +26,7 @@ function git(...args: string[]) {
 beforeEach(() => {
   const env = { ...process.env };
   const settings = {
-    PLANNOTATOR_DATA_DIR: '', PLANNOTATOR_AI: 'disabled', PLANNOTATOR_REMOTE: '0',
+    PLANNOTATOR_DATA_DIR: '', PLANNOTATOR_OPENCODE_URL: '', PLANNOTATOR_REMOTE: '0',
     PLANNOTATOR_PORT: '', PLANNOTATOR_REVIEW_PROGRESS: '0', PLANNOTATOR_GIT_REMOTE_CHECK: '0',
     PATH: process.env.PATH,
   };

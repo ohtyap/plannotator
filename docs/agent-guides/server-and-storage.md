@@ -560,8 +560,8 @@ loopback Host naming the server's port (`403`), no `Origin` (`403`), and
 `404 { error: "Not found", code: "host_control_disabled" }` (`HOST_CONTROL_DISABLED_CODE`),
 which a host reads as "turned off" rather than "an older Plannotator" (an uncoded `404`);
 they are off in remote mode, and in a `--tailscale` session a request through `tailscale serve`
-gets the same `host_control_disabled` answer (`fromThisMachine`; #2166). Unlike the pull bridge they still answer under
-`PLANNOTATOR_AI=disabled` (closing a review is not an AI feature). Once a session is
+gets the same `host_control_disabled` answer (`fromThisMachine`; #2166). Closing a
+review does not depend on AI. Once a session is
 decided (a host close included), the review servers refuse a late `/api/feedback` or
 `/api/exit` with `409` (both runtimes, like annotate), so a tab still open after the
 close neither deletes the kept draft nor gets an ok for feedback nobody receives.

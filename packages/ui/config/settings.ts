@@ -13,7 +13,7 @@ import {
   isAnnotateAgentTerminalSide,
   type AnnotateAgentTerminalSide,
 } from '@plannotator/core/agent-terminal';
-import type { DiffLineBgIntensity, ReviewDefaults } from '@plannotator/core/config-types';
+import type { DiffLineBgIntensity } from '@plannotator/core/config-types';
 import { DEFAULT_FAVICON_STYLE, isFaviconStyle, type FaviconStyle } from '@plannotator/core/favicon-style';
 import {
   agentSwitchConfigValue,
@@ -36,8 +36,8 @@ import {
 } from '../utils/documentTextSize';
 import { normalizeFontFamilyName } from '../utils/cssFontFamily';
 import { storage } from '../utils/storage';
-import { isLookChoiceResolved } from '../utils/lookAndFeelAnnouncement';
 import { generateIdentity } from '../utils/generateIdentity';
+import { annotationIdentityEnabled } from '../utils/annotationIdentityPolicy';
 import {
   getDefaultThemePair,
   normalizeThemePair,
@@ -134,19 +134,6 @@ function isDiffLineBgIntensity(v: unknown): v is DiffLineBgIntensity {
   return typeof v === 'string' && (DIFF_LINE_BG_INTENSITY_VALUES as readonly string[]).includes(v);
 }
 
-function parseReviewDefaults(value: unknown): ReviewDefaults | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const defaults: ReviewDefaults = {};
-  for (const [providerId, providerValue] of Object.entries(value)) {
-    if (!providerId || !providerValue || typeof providerValue !== 'object' || Array.isArray(providerValue)) continue;
-    const defaultDiffType = (providerValue as Record<string, unknown>).defaultDiffType;
-    if (typeof defaultDiffType === 'string' && defaultDiffType) {
-      defaults[providerId] = { defaultDiffType };
-    }
-  }
-  return defaults;
-}
-
 export interface SettingDef<T> {
   defaultValue: T | (() => T);
   fromCookie: () => T | undefined;
@@ -160,13 +147,14 @@ export interface SettingDef<T> {
 /** Typed registry of persisted UI settings and their storage codecs. */
 export const SETTINGS = {
   displayName: {
-    defaultValue: () => generateIdentity(),
-    fromCookie: () => storage.getItem('plannotator-identity') || undefined,
-    toCookie: (v: string) => storage.setItem('plannotator-identity', v),
+    defaultValue: () => annotationIdentityEnabled() ? generateIdentity() : '',
+    // A resolved empty value short-circuits the registry's default cookie write.
+    fromCookie: () => annotationIdentityEnabled() ? storage.getItem('plannotator-identity') || undefined : '',
+    toCookie: (v: string) => { if (annotationIdentityEnabled()) storage.setItem('plannotator-identity', v); },
     serverKey: 'displayName',
     fromServer: (sc: Record<string, unknown>) =>
-      typeof sc.displayName === 'string' && sc.displayName ? sc.displayName : undefined,
-    toServer: (v: string) => ({ displayName: v }),
+      annotationIdentityEnabled() && typeof sc.displayName === 'string' && sc.displayName ? sc.displayName : undefined,
+    toServer: (v: string): Record<string, unknown> => annotationIdentityEnabled() ? { displayName: v } : {},
   },
 
   /**
@@ -213,18 +201,9 @@ export const SETTINGS = {
   },
 
   gridEnabled: {
-    // Default OFF: plans open in the Clean look (the document edge to edge).
-    // Grid (the classic floating card on grid paper) is a choice, made in the
-    // first-run chooser or in Settings.
+    // Default to Clean (edge-to-edge); keep a stored Grid preference.
     defaultValue: false as boolean,
     fromCookie: () => {
-      // ConfigStore writes the default into this cookie on first load, so every
-      // browser that ran an older build stored 'true' (the old default) without
-      // anyone choosing it. The stored value counts only once the person has
-      // resolved the Grid/Clean choice under the Clean default (the v2 marker;
-      // a v1 marker with Grid stored is moved to Clean once, see
-      // utils/lookAndFeelAnnouncement); until then they get Clean.
-      if (!isLookChoiceResolved()) return undefined;
       const v = storage.getItem('plannotator-grid-enabled');
       return v === 'true' ? true : v === 'false' ? false : undefined;
     },
@@ -314,24 +293,6 @@ export const SETTINGS = {
     },
     toCookie: (value: boolean) =>
       storage.setItem('plannotator-enter-saves-comment', String(value)),
-    serverKey: undefined, fromServer: undefined, toServer: undefined,
-  },
-
-  /**
-   * Hide the owner in the repository's label: `payments-service` (on) instead
-   * of `acme/payments-service`. Default OFF, today's look. Applies beside the
-   * document, in the plan diff, in code review's header and in the tab
-   * titles; hovering the label always shows the full `owner/repo`. Read
-   * through `repoLabel` (`utils/repoLabel`). Cookie-only.
-   */
-  hideRepoOwner: {
-    defaultValue: false as boolean,
-    fromCookie: () => {
-      const value = storage.getItem('plannotator-hide-repo-owner');
-      return value === 'true' ? true : value === 'false' ? false : undefined;
-    },
-    toCookie: (value: boolean) =>
-      storage.setItem('plannotator-hide-repo-owner', String(value)),
     serverKey: undefined, fromServer: undefined, toServer: undefined,
   },
 
@@ -501,25 +462,6 @@ export const SETTINGS = {
     toCookie: (value: boolean) =>
       storage.setItem('plannotator-review-show-stage-controls', String(value)),
     serverKey: undefined, fromServer: undefined, toServer: undefined,
-  },
-
-  reviewDefaults: {
-    defaultValue: {} as ReviewDefaults,
-    fromCookie: () => {
-      const value = storage.getItem('plannotator-review-defaults');
-      if (!value) return undefined;
-      try {
-        return parseReviewDefaults(JSON.parse(value));
-      } catch {
-        return undefined;
-      }
-    },
-    toCookie: (value: ReviewDefaults) =>
-      storage.setItem('plannotator-review-defaults', JSON.stringify(value)),
-    serverKey: 'reviewDefaults',
-    fromServer: (serverConfig: Record<string, unknown>) =>
-      parseReviewDefaults(serverConfig.reviewDefaults),
-    toServer: (value: ReviewDefaults) => ({ reviewDefaults: value }),
   },
 
   defaultDiffType: {
@@ -764,25 +706,6 @@ export const SETTINGS = {
       return isDiffMinimapMode(v) ? v : undefined;
     },
     toCookie: (v: DiffMinimapMode) => storage.setItem('plannotator-diff-minimap', v),
-    serverKey: undefined,
-    fromServer: undefined,
-    toServer: undefined,
-  },
-  /** Experimental: author suggestions by editing code in place in the review
-   *  all-files view. Cookie-only (no server sync) while the feature is
-   *  experimental — default OFF, and when off no edit UI renders and no
-   *  editor is ever constructed. (In code-split hosts the editor chunk is
-   *  never fetched; Plannotator's single-file production build inlines all
-   *  dynamic imports, so there the module namespace exists at page load —
-   *  audited free of top-level side effects — but stays inert.) */
-  editSuggestions: {
-    defaultValue: false as boolean,
-    fromCookie: () => {
-      const v = storage.getItem('plannotator-experimental-edit-suggestions');
-      return v === 'true' ? true : v === 'false' ? false : undefined;
-    },
-    toCookie: (v: boolean) =>
-      storage.setItem('plannotator-experimental-edit-suggestions', String(v)),
     serverKey: undefined,
     fromServer: undefined,
     toServer: undefined,

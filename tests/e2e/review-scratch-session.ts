@@ -45,7 +45,7 @@ export async function reviewOf(name: string, base: Record<string, string>, head:
     PLANNOTATOR_SKIP_BROWSER_OPEN: '1',
     PLANNOTATOR_REMOTE: '0',
     PLANNOTATOR_INBOX_CONNECT: '0',
-    PLANNOTATOR_AI: 'disabled',
+    PLANNOTATOR_OPENCODE_URL: '',
     PLANNOTATOR_UPDATE_CHECK: '0',
     PLANNOTATOR_GIT_REMOTE_CHECK: '0',
   };

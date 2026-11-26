@@ -20,7 +20,7 @@ function render(props: Partial<React.ComponentProps<typeof AnnotationToolstrip>>
   const el = document.createElement('div');
   document.body.appendChild(el);
   root = createRoot(el);
-  act(() => root!.render(<AnnotationToolstrip inputMethod="pinpoint" onInputMethodChange={() => {}} mode="selection" onModeChange={() => {}} showHelpLink={false} {...props} />));
+  act(() => root!.render(<AnnotationToolstrip inputMethod="pinpoint" onInputMethodChange={() => {}} mode="selection" onModeChange={() => {}} {...props} />));
   return [...el.querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '').join(' ');
 }
 

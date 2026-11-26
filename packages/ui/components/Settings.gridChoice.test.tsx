@@ -1,8 +1,6 @@
 /**
- * Settings → Display → Grid Background is a real choice. Clean is the default
- * and a stored Grid value counts only once the choice is resolved (see
- * `config/gridEnabledSetting.test.ts`), so the switch must record the choice:
- * otherwise turning Grid on in Settings would fall back to Clean on reload.
+ * Settings → Display → Grid Background can change the look without an
+ * onboarding dialog or marker.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import React, { act } from 'react';
@@ -63,7 +61,7 @@ describe.if(hasDom)('Settings → Grid Background', () => {
 
   test('turning Grid on survives a reload', async () => {
     priorGrid = configStore.get('gridEnabled');
-    installBackend();
+    const values = installBackend();
     configStore.set('gridEnabled', false);
     await mountDisplayTab();
     expect(gridSwitch().getAttribute('aria-checked')).toBe('false');
@@ -73,5 +71,6 @@ describe.if(hasDom)('Settings → Grid Background', () => {
 
     // A reload resolves settings from storage again.
     expect(new ConfigStoreForTest().get('gridEnabled')).toBe(true);
+    expect([...values.keys()].filter((key) => key.includes('plan-look'))).toEqual([]);
   });
 });

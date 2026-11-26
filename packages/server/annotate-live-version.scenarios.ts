@@ -35,7 +35,7 @@ const ENV_KEYS = [
   "PLANNOTATOR_DATA_DIR",
   "PLANNOTATOR_PORT",
   "PLANNOTATOR_REMOTE",
-  "PLANNOTATOR_AI",
+  "PLANNOTATOR_OPENCODE_URL",
   "PLANNOTATOR_ANNOTATE_HISTORY",
 ] as const;
 
@@ -65,7 +65,7 @@ export function defineAnnotateLiveVersionScenarios(runtime: string, start: Start
       process.env.PLANNOTATOR_DATA_DIR = dataDir;
       delete process.env.PLANNOTATOR_PORT;
       process.env.PLANNOTATOR_REMOTE = "0";
-      process.env.PLANNOTATOR_AI = "disabled";
+      process.env.PLANNOTATOR_OPENCODE_URL = "";
       delete process.env.PLANNOTATOR_ANNOTATE_HISTORY;
       docDir = join(root, "docs");
       mkdirSync(docDir, { recursive: true });

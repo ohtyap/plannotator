@@ -1,25 +1,22 @@
 > **Upstream notes.** This fork opens local checkouts and patches using
 > `plannotator review`. Plugin commands, forge review and Inbox are not supported.
+> Sections below that describe spawning other agents, model catalogs, the
+> agent-tool switch, or host bridges are upstream history, not this fork.
 
-## Code Review Flow
+## Standalone AI
 
-```
-User runs /plannotator-review command
-        ↓
-Claude Code: plannotator review subcommand runs
-OpenCode: event handler intercepts command
-        ↓
-VCS provider captures local changes (Git, GitButler, JJ, or P4 where supported). When review runs from a
-non-VCS parent that contains nested Git/JJ/GitButler repos, child diffs are combined with
-folder-prefixed paths.
-        ↓
-Review server starts, opens browser with diff viewer
-        ↓
-User annotates code, provides feedback
-        ↓
-Send Feedback → feedback sent to agent session
-Approve → approved prompt sent to agent session (with the note/annotations when approving with notes)
-```
+`packages/server/ai-runtime.ts` registers only the OpenCode V2 connection.
+It probes the preconfigured endpoint without discovering or starting a service.
+Ask AI uses a new, tool-disabled OpenCode session, scoped to the server-selected
+directory. On a worktree switch, code review starts a new chat; within a worktree
+it supplies the rendered patch when the diff changes. Annotate supplies
+visible document text rather than asking the agent to read a file.
+
+Review Agent and Guided Review use tool-free text generation over the
+launch-time patch. `packages/server/agent-jobs.ts` keeps launch details
+server-side, streams job state to the browser, and does not spawn a CLI.
+The server validates the model's findings or guide before publishing them.
+Manual review and annotation work without OpenCode.
 
 ### Color-free VCS output (#1661)
 
@@ -311,7 +308,7 @@ The list's first row, which opens every change in one view (the dock tab of the 
 
 `since-base` is only offered when the base ref actually resolves — on a repo whose trunk isn't discoverable (`trunk`, no `origin/HEAD`) `getGitContext` omits it and the default falls through to `uncommitted`, so committed branch work is never silently hidden. The since-base patch/sections/fingerprint/file-content paths all degrade to `HEAD` together when merge-base fails for a resolvable-but-unrelated base. There is no first-run review-setup dialog (`ReviewSetupDialog` was removed, as `DiffTypeSetupDialog` was before it): the panel view simply defaults to Tree and the panel toggle / Settings → Review change it. Code review shows no first-run announcements: the owner retired its nine on 2026-11-13 (guide intro, look-and-feel, Edit Mode, token hover cards, terminal tools, Inbox, "Ask this session", the agent-tool offer, the destination spotlight). Plan review and annotate keep the shared ones described below. Analysis layers no longer add a startup dialog: Semantic Changes retains its enabled default, while Call Flow remains disabled until the user explicitly enables it in Settings, which is also consent for its managed runtime installation.
 
-**Saved default diff per VCS (Settings → Review).** The Review tab (formerly Git) has a Git section and a Jujutsu section. Git keeps its original setting, `diffOptions.defaultDiffType` (cookie `plannotator-default-diff-type`, coupled to `reviewPanelView` as above), so settings saved by older versions need no rewrite. Jujutsu saves its own value in `reviewDefaults.jj.defaultDiffType` (config.json `reviewDefaults`, cookie `plannotator-review-defaults`; `setProviderReviewDefaultDiffType` / `getProviderReviewDefaultDiffType` in `packages/ui/config/reviewView.ts`), never coupled to the Git pair. `resolveDefaultDiffTypeFor(config, vcsId)` in `packages/shared/config.ts` (vendored to Pi) picks what a local review opens on: in jj, the saved jj mode, or `jj-current` when it is unset or not a jj mode; every other VCS reads `resolveDefaultDiffType`. A saved jj mode the change cannot offer (Evolution diff without history, Line of work without a resolvable base) opens on Current change. Opening on Evolution diff compares against the change's previous state (`gitContext.jjEvologs[1]`), as switching to it in the UI does, and the hosts forward that base to the server. The client's commit-exit fallback (`savedDefaultDiffTypeFor` in `App.tsx`) reads the same per-VCS value. The `review --base` / `--diff-type` flags stay Git-only.
+**Saved default diff (Settings → Review).** Git uses `diffOptions.defaultDiffType` (cookie `plannotator-default-diff-type`, coupled to `reviewPanelView` as above). Standalone review does not use Jujutsu; colocated checkouts can still be opened as Git repositories. The `review --base` / `--diff-type` flags stay Git-only.
 
 ### First-run terminal-tools announcement
 
@@ -398,7 +395,7 @@ right now: `/api/ai/capabilities` lists the session-bridge provider for `claude-
 the surface (the plan editor's `canUseAI` and not taken over by the annotate agent terminal; code
 review's AI button). Everything else defers WITHOUT writing the cookie, so the reader sees it in a
 session where it is true: no bridge (remote, a `--tailscale` tab of anyone but the machine's owner, Windows, the mod off, `-p`, Pi's
-event-API path, OpenCode 1, an older CLI), a gone session, other origins, `PLANNOTATOR_AI=disabled`,
+event-API path, OpenCode 1, an older CLI), a gone session, other origins,
 archive / shared / no-server sessions, the compact touch shell and the initial load. The headline
 names the connected host and the footer always says "This session is connected"; there is no
 setup variant. OpenCode's copy says "code review and annotate no longer hold the session" because

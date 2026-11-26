@@ -5,6 +5,7 @@ import { normalizeBrowserPath } from '@plannotator/core/browser-paths';
 import { basenameFromPath } from '@plannotator/core/source-save';
 import { PopoutDialog } from './PopoutDialog';
 import { isCommentSubmitKey } from '../utils/commentSubmitKey';
+import { visibleAnnotationAuthor } from '../utils/annotationIdentityPolicy';
 import { useConfigValue } from '../config/useConfig';
 import { extendThemeSwitch, useTheme } from './ThemeProvider';
 import { CommentPopover, type CommentExtraAction } from './CommentPopover';
@@ -225,7 +226,7 @@ const CodeInlineAnnotation: React.FC<{
         <span className={plain ? 'tabular-nums' : 'rounded bg-muted px-1.5 py-0.5 font-mono normal-case text-foreground'}>
           {lineLabel(annotation.lineStart, annotation.lineEnd)}
         </span>
-        {annotation.author && <span className="truncate normal-case">by <bdi>{annotation.author}</bdi></span>}
+        {visibleAnnotationAuthor(annotation.author) && <span className="truncate normal-case">by <bdi>{annotation.author}</bdi></span>}
         {annotation.outsideDiff && (
           <span
             className="rounded px-1.5 py-0.5 normal-case font-medium"

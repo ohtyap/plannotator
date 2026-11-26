@@ -23,7 +23,6 @@ async function renderMenu(compactTouchLayout: boolean) {
     <ThemeProvider defaultTheme="dark">
       <ReviewHeaderMenu
         onOpenSettings={() => {}}
-        onOpenExport={() => {}}
         onCopyAgentInstructions={() => {}}
         onToggleFileTree={() => {}}
         onToggleSidebar={() => {}}
@@ -31,7 +30,6 @@ async function renderMenu(compactTouchLayout: boolean) {
         isSidebarOpen={false}
         compactTouchLayout={compactTouchLayout}
         agentInstructionsEnabled={false}
-        appVersion="test"
       />
     </ThemeProvider>,
   ));
@@ -54,13 +52,11 @@ describe('ReviewHeaderMenu Options button', () => {
     expect(trigger!.textContent).toContain('Options');
   });
 
-  test.skipIf(!hasDom)('the menu shows the running version without update actions', async () => {
+  test.skipIf(!hasDom)('Options keeps export and settings without a version footer', async () => {
     const trigger = await renderMenu(false);
     await act(async () => trigger!.click());
-    const footer = host!.querySelector('[data-menu-version]')!;
-    expect(footer.textContent).toContain('vtest');
-    expect([...footer.querySelectorAll('a')].map((link) => link.getAttribute('href')))
-      .toEqual(['https://github.com/backnotprop/plannotator']);
-    expect(footer.querySelector('button')).toBeNull();
+    expect(host!.textContent).not.toContain('Export');
+    expect(host!.textContent).toContain('Settings');
+    expect(host!.querySelector('[data-menu-version], a[href*="github.com/backnotprop/plannotator"]')).toBeNull();
   });
 });

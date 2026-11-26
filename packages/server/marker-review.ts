@@ -1116,9 +1116,12 @@ export function parseMarkerStreamOutput(stdout: string, engine: MarkerEngine, no
   if (!nonce) return null; // no expected nonce → cannot trust any block
 
   const { canonicalText } = reduceMarkerStream(stdout, engine);
-  if (!canonicalText) return null;
+  return parseMarkerReviewText(canonicalText, nonce);
+}
 
-  const block = extractLastMarkerBlock(canonicalText, markerOpen(nonce), markerClose(nonce));
+export function parseMarkerReviewText(text: string, nonce: string): MarkerReviewOutput | null {
+  if (!nonce) return null;
+  const block = extractLastMarkerBlock(text, markerOpen(nonce), markerClose(nonce));
   if (block === null) return null;
 
   let parsed: unknown;

@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { startAnnotateServer } from "./annotate";
 
 const MINIMAL_HTML = "<html><body>Plannotator</body></html>";
-const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_AI", "PLANNOTATOR_INBOX_CONNECT", "PLANNOTATOR_UPDATE_CHECK"] as const;
+const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_INBOX_CONNECT", "PLANNOTATOR_UPDATE_CHECK"] as const;
 const saved: Record<string, string | undefined> = {};
 let dataDir: string;
 
@@ -21,7 +21,7 @@ beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), "plannotator-annotate-view-config-"));
   process.env.PLANNOTATOR_DATA_DIR = dataDir;
   process.env.PLANNOTATOR_REMOTE = "0";
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_INBOX_CONNECT = "0";
   process.env.PLANNOTATOR_UPDATE_CHECK = "0";
   delete process.env.PLANNOTATOR_PORT;
@@ -61,12 +61,12 @@ describe("annotateView on the Bun annotate server", () => {
       const res = await fetch(`${server.url}/api/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Origin: new URL(server.url).origin },
-        body: JSON.stringify({ annotateView: "edit", displayName: "Reviewer" }),
+        body: JSON.stringify({ annotateView: "edit", favicon: "yellow" }),
       });
       expect(res.status).toBe(200);
       const file = JSON.parse(readFileSync(configPath(), "utf-8"));
       expect(file.annotateView).toBe("wide");
-      expect(file.displayName).toBe("Reviewer");
+      expect(file.favicon).toBe("yellow");
     } finally {
       server.stop();
     }

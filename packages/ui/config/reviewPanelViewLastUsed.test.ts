@@ -3,8 +3,6 @@ import { resetStorageBackend, setStorageBackend } from '../utils/storage';
 import { SETTINGS } from './settings';
 import { ConfigStoreForTest } from './configStore';
 import {
-  getProviderReviewDefaultDiffType,
-  setProviderReviewDefaultDiffType,
   setReviewDefaultDiffType,
   setReviewPanelView,
 } from './reviewView';
@@ -80,42 +78,7 @@ describe('reviewPanelViewLastUsed setting', () => {
     expect(store.get('reviewPanelViewLastUsed')).toBe('tree');
   });
 
-  const jj = {
-    id: 'jj',
-    label: 'Jujutsu',
-    defaultDiffType: 'jj-current',
-    diffOptions: [
-      { id: 'jj-current', label: 'Current', description: 'Current change' },
-      { id: 'jj-line', label: 'Line', description: 'Line of work' },
-    ],
-  };
-
-  test('the Jujutsu default is its own value: Git writes never touch it, and it never touches Git', () => {
-    installMemoryBackend();
-    const store = makeStore();
-
-    expect(getProviderReviewDefaultDiffType(jj, store)).toBe('jj-current');
-    setProviderReviewDefaultDiffType('jj', 'jj-line', store);
-    expect(getProviderReviewDefaultDiffType(jj, store)).toBe('jj-line');
-    expect(store.get('defaultDiffType')).toBe('since-base');
-
-    setReviewDefaultDiffType('merge-base', store);
-    setReviewPanelView('sections', undefined, store);
-    expect(getProviderReviewDefaultDiffType(jj, store)).toBe('jj-line');
-    // Git stays on its original key only; no copy that could go stale.
-    expect(store.get('reviewDefaults').git).toBeUndefined();
-  });
-
-  test('a Git-shaped or unknown saved jj value reads as jj-current', () => {
-    installMemoryBackend();
-    const store = makeStore();
-    for (const bad of ['since-base', 'merge-base', 'jj-nope']) {
-      setProviderReviewDefaultDiffType('jj', bad, store);
-      expect(getProviderReviewDefaultDiffType(jj, store)).toBe('jj-current');
-    }
-  });
-
-  test('settings saved before Jujutsu defaults keep working without a rewrite', () => {
+  test('legacy Git settings still resolve without a rewrite', () => {
     const values = installMemoryBackend();
     values.set('plannotator-default-diff-type', 'branch');
     const store = makeStore();
@@ -124,7 +87,6 @@ describe('reviewPanelViewLastUsed setting', () => {
     // And the old config.json key still wins on load.
     store.init({ diffOptions: { defaultDiffType: 'unstaged' } });
     expect(store.get('defaultDiffType')).toBe('unstaged');
-    expect(getProviderReviewDefaultDiffType(jj, store)).toBe('jj-current');
   });
 
   test('local-vs-remote persists as a Tree-compatible default', () => {

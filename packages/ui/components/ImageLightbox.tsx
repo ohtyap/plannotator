@@ -2,7 +2,7 @@ import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } f
 import { imageRegionFileName, imageRegionLocationLines, parseImageRegion, type ImageRegion } from '@plannotator/core/image-region';
 import { AnnotationType, type Annotation, type ImageAttachment } from '../types';
 import type { MentionSource } from '../utils/mentions';
-import { getIdentity } from '../utils/identity';
+import { getAnnotationAuthor } from '../utils/identity';
 import { THUMBS_UP_LABEL } from '../utils/quickLabels';
 import { hashDraftScope } from '../utils/draftScopeHash';
 import { AnnotationPanel } from './AnnotationPanel';
@@ -173,6 +173,8 @@ export const ImageLightbox: React.FC<{
   images?: readonly LightboxImage[];
   /** Comments on part of an image (#2100). Additive: absent, no region tools. */
   regions?: LightboxRegionComments;
+  /** Show the first-wheel zoom tip. Defaults to true. */
+  showWheelHint?: boolean;
   /**
    * A touch screen's swipe through `images` (`useSwipeStep`, the Inbox
    * phone viewer's, approval "inbox-image-swipe"): the image follows the
@@ -187,7 +189,7 @@ export const ImageLightbox: React.FC<{
    * image is `src`. Additive: absent, the first image that is `src` opens.
    */
   at?: number;
-}> = ({ src, alt, onClose, images, regions, swipe, at }) => {
+}> = ({ src, alt, onClose, images, regions, showWheelHint = true, swipe, at }) => {
   const overlayRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -358,7 +360,7 @@ export const ImageLightbox: React.FC<{
       text,
       originalText: current.writtenSrc,
       createdA: Date.now(),
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       ...(attachments && attachments.length > 0 ? { images: attachments } : {}),
       ...(mentions && mentions.length > 0 ? { mentions } : {}),
       ...(quick ? { isQuickLabel: true } : {}),
@@ -619,7 +621,7 @@ export const ImageLightbox: React.FC<{
             imageClassName="shadow-2xl"
             radius={8}
             stageAttributes={{ 'data-lightbox-stage': zoomMode }}
-            wheelHint={wheelHint}
+            wheelHint={showWheelHint && wheelHint}
           />
         )}
         {alt && (
@@ -809,7 +811,7 @@ export const ImageLightbox: React.FC<{
                   className="absolute inset-0"
                   imageClassName="shadow-xl"
                   stageAttributes={{ 'data-lightbox-stage': zoomMode, ...(regionsOn ? { 'data-region-tool-active': tool } : {}) }}
-                  wheelHint={wheelHint}
+                  wheelHint={showWheelHint && wheelHint}
                 >
                   {regionsOn && (
                     <RegionBoxLayer

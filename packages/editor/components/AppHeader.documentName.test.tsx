@@ -22,13 +22,13 @@ function baseProps(): React.ComponentProps<typeof headerModule extends null ? ne
     isSubmitting: false, isExiting: false, isPanelOpen: false, aiAvailable: false, isAIChatOpen: false, aiHasMessages: false,
     annotationCount: 0, linkedDocIsActive: false, callbackShareUrlReady: false, canShareCurrentSession: false,
     agentName: 'Claude', availableAgents: [], showAnnotationsWarning: false,
-    callbackConfig: null, taterMode: false, mobileSettingsOpen: false, gitUser: undefined, agentTerminalAvailable: false,
+    callbackConfig: null, taterMode: false, mobileSettingsOpen: false, agentTerminalAvailable: false,
     onCallbackFeedback: noop, onCallbackApprove: noop, onAnnotateExit: noop, onGoalSetupExit: noop, onGoalSetupSubmit: noop,
     onFeedback: noop, onApprove: noop, onAnnotationPanelToggle: noop, onAIChatToggle: noop,
-    onArchiveCopy: noop, onArchiveDone: noop, onTaterModeChange: noop, onIdentityChange: noop, onUIPreferencesChange: noop,
-    onOpenSettings: noop, onCloseSettings: noop, onOpenExport: noop, onCopyAgentInstructions: noop, onDownloadAnnotations: noop, onPrint: noop,
+    onArchiveCopy: noop, onArchiveDone: noop, onTaterModeChange: noop, onUIPreferencesChange: noop,
+    onOpenSettings: noop, onCloseSettings: noop, onCopyAgentInstructions: noop,
     onCopyShareLink: noop, onOpenImport: noop, onSaveToObsidian: noop, onSaveToBear: noop, onSaveToOctarine: noop,
-    appVersion: '0.0.0', agentInstructionsEnabled: false, obsidianConfigured: false, bearConfigured: false, octarineConfigured: false,
+    agentInstructionsEnabled: false, obsidianConfigured: false, bearConfigured: false, octarineConfigured: false,
   };
 }
 
@@ -79,7 +79,7 @@ afterEach(async () => {
 });
 
 describe.skipIf(!hasDom)('AppHeader document name', () => {
-  test('shows the name beside the logo and the full path on hover', async () => {
+  test('shows the document name and the full path on hover', async () => {
     const el = await render({ documentName: { name: 'rollout-plan.md', title: '/repo/docs/rollout-plan.md' } });
     const name = nameOf(el)!;
     expect(name.textContent).toBe('rollout-plan.md');
@@ -130,9 +130,10 @@ describe.skipIf(!hasDom)('AppHeader document name', () => {
     expect(el.querySelector('header')!.textContent!.split('spec.md').length - 1).toBe(1);
   });
 
-  test('no name passed (plan review): the header shows only the logo', async () => {
+  test('no name passed: the header has no document label or branding link', async () => {
     const el = await render({});
     expect(nameOf(el)).toBeNull();
+    expect(el.querySelector('header a[href="https://plannotator.ai"]')).toBeNull();
   });
 
   test('the compact header is unchanged', async () => {

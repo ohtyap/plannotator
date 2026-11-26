@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ConventionalLabel, ConventionalDecoration } from '@plannotator/ui/types';
 import { isCurrentUser } from '@plannotator/ui/utils/identity';
+import { visibleAnnotationAuthor } from '@plannotator/ui/utils/annotationIdentityPolicy';
 import { ConventionalLabelBadge } from './ConventionalLabelPicker';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 
@@ -48,7 +49,7 @@ export const CommentMeta: React.FC<CommentMetaProps> = ({
           {source}
         </span>
       ) : null}
-      {author && (
+      {author && visibleAnnotationAuthor(author) && (
         <span
           title={isCurrentUser(author) ? `${author} (me)` : author}
           className={`min-w-0 text-xs truncate ${

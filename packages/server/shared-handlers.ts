@@ -229,7 +229,7 @@ export function handleApiNotFound(path: string): Response {
  * page load.
  */
 export function handleFavicon(pathname = "/favicon.png"): Response {
-  const style = getServerConfig(null).favicon;
+  const style = getServerConfig().favicon;
   const { body, contentType } = pathname === "/favicon.ico" ? faviconIcoBody(style) : faviconBody(style);
   return new Response(body, {
     headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },

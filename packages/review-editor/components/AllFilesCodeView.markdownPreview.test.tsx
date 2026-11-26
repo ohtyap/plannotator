@@ -21,8 +21,6 @@ let lastCodeViewProps: Record<string, unknown> | null = null;
 // What the stand-in CodeView reports as on screen, and the edit session's file.
 let renderedItems: Array<{ id: string; element: HTMLElement }> = [];
 let viewport: HTMLElement | undefined;
-let fakeEditingItemId: string | null = null;
-const scrolls: string[] = [];
 const updatedItems: Array<{ id: string; fileDiff: { hunks: unknown[]; cacheKey?: string } }> = [];
 
 const realPierreDiffs = { ...(await import('@pierre/diffs')) };
@@ -72,7 +70,7 @@ mock.module('@pierre/diffs/react', () => ({
         return true;
       },
       updateItemId: () => true,
-      scrollTo: (target: { id?: string }) => { scrolls.push(target.id ?? ''); },
+      scrollTo: () => {},
       setSelectedLines: () => {},
       getSelectedLines: () => null,
       clearSelectedLines: () => {},
@@ -88,7 +86,6 @@ mock.module('@pierre/diffs/react', () => ({
     }));
     return <div ref={props.containerRef} className={props.className} />;
   }),
-  EditProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   useStableCallback: <T extends (...args: never[]) => unknown>(callback: T): T => {
     const callbackRef = useRef(callback);
     callbackRef.current = callback;
@@ -105,19 +102,6 @@ mock.module('./ToolbarHost', () => ({
       startEdit: () => {},
     }));
     return null;
-  }),
-}));
-
-// An edit session stand-in: only which item it holds matters here.
-mock.module('../edit/useEditSession', () => ({
-  useEditSession: () => new Proxy({
-    editingItemId: fakeEditingItemId,
-    editingItemIdRef: { current: fakeEditingItemId },
-    editUnavailableRef: { current: new Map() },
-    dirtyStore: { subscribe: () => () => {}, getSnapshot: () => 0 },
-    createEditor: undefined,
-  } as Record<string | symbol, unknown>, {
-    get: (target, key) => (key in target ? target[key] : () => {}),
   }),
 }));
 
@@ -223,8 +207,6 @@ afterEach(async () => {
   updatedItems.length = 0;
   renderedItems = [];
   viewport = undefined;
-  fakeEditingItemId = null;
-  scrolls.length = 0;
 });
 
 afterAll(() => {
@@ -270,49 +252,6 @@ describe.if(hasDom)('Markdown previews in the all-files view', () => {
     await render({ markdownPreview: preview([mdFile.path], calls) });
     await rerender({ markdownPreview: preview([mdFile.path], calls), activeSearchMatch: match as never, activeSearchMatchId: 'm1' });
     expect(calls).toContainEqual([mdFile.path, 'source']);
-  });
-
-  test('tells the host which file the edit session holds, so its view is locked', async () => {
-    const editing: Array<string | null> = [];
-    fakeEditingItemId = mdFile.path;
-    await render({
-      markdownPreview: { ...preview([], []), onEditingFileChange: (path: string | null) => { editing.push(path); } },
-      enableEditSuggestions: true,
-      onAddSuggestionsForFile: () => {},
-    });
-    expect(editing.at(-1)).toBe(mdFile.path);
-    fakeEditingItemId = null;
-    await rerender({
-      markdownPreview: { ...preview([], []), onEditingFileChange: (path: string | null) => { editing.push(path); } },
-      enableEditSuggestions: true,
-      onAddSuggestionsForFile: () => {},
-    });
-    expect(editing.at(-1)).toBeNull();
-  });
-
-  test('the file in an edit session keeps its diff; the swap held back runs once the edit ends, and search scrolls there', async () => {
-    const calls: Array<[string, string]> = [];
-    // Stable files: only the edit session changes between the renders below.
-    const editProps = { files: [mdFile, codeFile], enableEditSuggestions: true, onAddSuggestionsForFile: () => {} };
-    fakeEditingItemId = mdFile.path;
-    await render({ markdownPreview: preview([], calls), ...editProps });
-    // Asked to show it rendered mid-edit: the editor's diff stays. One object
-    // from here on, so only the edit session changes between renders.
-    const held = preview([mdFile.path], calls);
-    await rerender({ markdownPreview: held, ...editProps });
-    expect(updatedItems.some((u) => u.id === mdFile.path)).toBe(false);
-
-    // A search hit in it scrolls to the line instead of asking for Source.
-    const match = { id: 'm1', filePath: mdFile.path, side: 'addition', lineNumber: 1, text: '# New', matchStart: 2, matchEnd: 5 };
-    await rerender({ markdownPreview: held, ...editProps, activeSearchMatch: match as never, activeSearchMatchId: 'm1' });
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
-    expect(calls).not.toContainEqual([mdFile.path, 'source']);
-    expect(scrolls).toContain(mdFile.path);
-
-    // The edit ends: the held-back swap runs.
-    fakeEditingItemId = null;
-    await rerender({ markdownPreview: held, ...editProps, activeSearchMatch: match as never, activeSearchMatchId: 'm1' });
-    expect(updatedItems.filter((u) => u.id === mdFile.path).at(-1)?.fileDiff.hunks).toEqual([]);
   });
 
   test('P never picks a file in the overscan: focus counts only inside the viewport', async () => {

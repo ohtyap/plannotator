@@ -27,7 +27,6 @@ describe('ReviewHeaderMenu compact review actions', () => {
       <ThemeProvider defaultTheme="dark">
         <ReviewHeaderMenu
           onOpenSettings={() => {}}
-          onOpenExport={() => {}}
           onCopyAgentInstructions={() => {}}
           onToggleFileTree={() => {}}
           onToggleSidebar={() => {}}
@@ -46,7 +45,6 @@ describe('ReviewHeaderMenu compact review actions', () => {
             { id: 'approve', label: 'Approve', onSelect: () => {}, disabled: true },
           ]}
           agentInstructionsEnabled={false}
-          appVersion="test"
         />
       </ThemeProvider>,
     ));

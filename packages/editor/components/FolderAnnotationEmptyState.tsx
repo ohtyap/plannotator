@@ -2,10 +2,8 @@ import React from 'react';
 import { Button } from '@plannotator/ui/components/ui/button';
 
 export function FolderAnnotationEmptyState({
-  compactTouchLayout,
   onChooseFile,
 }: {
-  compactTouchLayout: boolean;
   onChooseFile: () => void;
 }) {
   return (
@@ -13,21 +11,11 @@ export function FolderAnnotationEmptyState({
       <div className="w-full max-w-3xl p-12 text-center text-muted-foreground">
         <p className="text-lg font-medium mb-2">Select a file to annotate</p>
         <p className="text-sm">
-          {compactTouchLayout
-            ? 'Choose a markdown, text, HTML, or diagram file to begin.'
-            : 'Pick a markdown, HTML, or diagram file from the sidebar to begin.'}
+          Choose a Markdown, text, HTML, or diagram file to begin.
         </p>
-        {compactTouchLayout && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            onClick={onChooseFile}
-          >
-            Choose a file
-          </Button>
-        )}
+        <Button type="button" variant="secondary" size="sm" className="mt-4" aria-haspopup="dialog" onClick={onChooseFile}>
+          Choose a file
+        </Button>
       </div>
     </div>
   );

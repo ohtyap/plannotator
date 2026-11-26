@@ -50,6 +50,9 @@ export const GIT_REPO_ENV = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_
  */
 export function childEnv(extra?: Readonly<ChildEnv>): ChildEnv {
   const env: ChildEnv = { ...process.env, ...(process.env.PLANNOTATOR_TEST_SANDBOX ? SANDBOX_NO_KEYCHAIN_ENV : {}) };
+  // Only the in-process OpenCode client should inherit the service credential.
+  delete env.OPENCODE_PASSWORD;
+  delete env.OPENCODE_SERVER_PASSWORD;
   if (extra) {
     for (const [key, value] of Object.entries(extra)) {
       if (value === undefined) delete env[key];

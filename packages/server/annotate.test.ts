@@ -156,7 +156,7 @@ describe("annotate server: /api/config favicon persistence", () => {
       });
       expect(validResponse.status).toBe(200);
       expect(loadConfig().favicon).toBe("yellow");
-      expect(getServerConfig(null).favicon).toBe("yellow");
+      expect(getServerConfig().favicon).toBe("yellow");
 
       const invalidResponse = await fetch(`${server.url}/api/config`, {
         method: "POST",
@@ -166,7 +166,7 @@ describe("annotate server: /api/config favicon persistence", () => {
       expect(invalidResponse.status).toBe(200);
       // "unknown" was not written into config, so "yellow" is retained
       expect(loadConfig().favicon).toBe("yellow");
-      expect(getServerConfig(null).favicon).toBe("yellow");
+      expect(getServerConfig().favicon).toBe("yellow");
     } finally {
       server.stop();
     }

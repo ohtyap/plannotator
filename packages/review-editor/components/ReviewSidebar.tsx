@@ -95,6 +95,7 @@ interface ReviewSidebarProps {
   aiPermissionRequests?: PendingPermission[];
   onRespondToPermission?: (requestId: string, allow: boolean) => void;
   aiProviders?: AIProviderOption[];
+  hideAIProviderBar?: boolean;
   aiConfig?: { providerId: string | null; model: string | null; reasoningEffort?: string | null };
   onAIConfigChange?: (config: { providerId?: string | null; model?: string | null; reasoningEffort?: string | null }) => void;
   hasAISession?: boolean;
@@ -311,6 +312,7 @@ export const ReviewSidebar: React.FC<ReviewSidebarProps> = /* React.memo */({
   aiPermissionRequests = [],
   onRespondToPermission,
   aiProviders,
+  hideAIProviderBar,
   aiConfig,
   onAIConfigChange,
   hasAISession,
@@ -843,6 +845,7 @@ export const ReviewSidebar: React.FC<ReviewSidebarProps> = /* React.memo */({
               permissionRequests={aiPermissionRequests}
               onRespondToPermission={onRespondToPermission}
               aiProviders={aiProviders}
+              hideProviderBar={hideAIProviderBar}
               aiConfig={aiConfig}
               onAIConfigChange={onAIConfigChange}
               hasAISession={hasAISession}

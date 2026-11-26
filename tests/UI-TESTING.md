@@ -512,7 +512,7 @@ not hand the turn to an earlier dialog.
    the dark footage. At ~400px wide the video spans the panel, the headline, switch and actions
    wrap without horizontal overflow, and "Got it" stays reachable.
 
-## Ask This Session Announcement Manual Checklist
+## Ask This Session Announcement Manual Checklist (upstream only)
 
 Not CI. The gate is one cookie, `plannotator-announce-ask-session-seen`. Seed
 `plannotator-announce-tui-herdr-seen=1` and `plannotator-announce-inbox-seen=1` (and the other
@@ -521,7 +521,7 @@ first-run keys) so the chain reaches it.
 1. **Who sees it.** Open a review from Claude Code (`/plannotator-review`), Pi or OpenCode 2 and
    don't touch anything: the announcement opens within a few seconds, its headline names that
    agent, and Ask AI shows "Ask this session". `PLANNOTATOR_ORIGIN=codex`,
-   `PLANNOTATOR_AI=disabled`, `PLANNOTATOR_CLAUDE_MOD=0` or `PLANNOTATOR_REMOTE=1`: no
+   `PLANNOTATOR_CLAUDE_MOD=0` or `PLANNOTATOR_REMOTE=1`: no
    announcement, and the cookie is still unset afterwards.
 2. **It never interrupts.** Clear the cookie, open a session and click into the page (or start
    typing a comment) before it appears: it does not open on this load, and the cookie is unset.

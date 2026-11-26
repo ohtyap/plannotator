@@ -209,22 +209,7 @@ async function waitFor(check: () => boolean, label: string): Promise<void> {
   throw new Error(`timed out waiting for ${label}`);
 }
 
-/** Retire every one-time announcement so nothing covers the guide. */
-function seedAnnouncementsSeen(): void {
-  memory.set("plannotator-plan-look-choice-resolved", "true");
-  memory.set("plannotator-announce-tui-herdr-seen", "1");
-  memory.set("plannotator-announce-inbox-seen", "1");
-  memory.set("plannotator-announce-ask-session-seen", "1");
-  memory.set("plannotator-announce-agent-tool-seen", "1");
-  memory.set("plannotator-guide-intro-seen", "2");
-  memory.set("plannotator-guide-hint-acked", "true");
-  memory.set("plannotator-edit-mode-announcement-seen", "3");
-  memory.set("plannotator-token-hover-announcement-seen", "1");
-  memory.set("plannotator-review-dest-spotlight-seen", "1");
-}
-
 async function mount(pr: boolean): Promise<void> {
-  seedAnnouncementsSeen();
   setStorageBackend(memoryBackend);
   configStore.loadFromBackend();
   globalThis.fetch = makeFetch(pr);
@@ -263,6 +248,7 @@ async function openSavedGuide(): Promise<void> {
   const guideButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
     .find((b) => b.title === "Open guided review");
   if (!guideButton) throw new Error("Guide button did not render");
+  expect(guideButton.querySelector("[data-guide-hint-dot]")).toBeNull();
   await act(async () => guideButton.click());
   let entry: HTMLButtonElement | undefined;
   await waitFor(() => {
@@ -272,6 +258,7 @@ async function openSavedGuide(): Promise<void> {
   }, "the saved guide entry");
   await act(async () => entry!.click());
   await waitFor(() => tickButtons().length === 2, "the guide's sections");
+  expect(memory.has("plannotator-guide-hint-acked")).toBe(false);
 }
 
 function tickButtons(): HTMLButtonElement[] {

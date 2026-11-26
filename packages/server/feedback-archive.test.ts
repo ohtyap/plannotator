@@ -49,7 +49,7 @@ const ENV_KEYS = [
   "PLANNOTATOR_DATA_DIR",
   "PLANNOTATOR_FEEDBACK_HISTORY",
   "PLANNOTATOR_ANNOTATE_HISTORY",
-  "PLANNOTATOR_AI",
+  "PLANNOTATOR_OPENCODE_URL",
   "PLANNOTATOR_PORT",
   "PLANNOTATOR_REMOTE",
 ] as const;
@@ -97,7 +97,7 @@ beforeEach(() => {
   for (const key of ENV_KEYS) saved[key] = process.env[key];
   delete process.env.PLANNOTATOR_PORT;
   process.env.PLANNOTATOR_REMOTE = "0";
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   // A real ~/.plannotator/config.json must never decide these tests.
   process.env.PLANNOTATOR_FEEDBACK_HISTORY = "1";
   process.env.PLANNOTATOR_ANNOTATE_HISTORY = "1";

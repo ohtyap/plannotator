@@ -9,7 +9,6 @@
  *   PLANNOTATOR_PORT   - Fixed port or inclusive range (default: random locally, 19432 for remote)
  */
 
-import { childPath } from "@plannotator/shared/child-env";
 import { createPackageChangesService, MAX_PACKAGE_FILE_BYTES } from "@plannotator/shared/package-changes-service";
 import { parseDiffToFiles } from "@plannotator/core/diff-files";
 import { homedir } from "node:os";
@@ -44,7 +43,6 @@ import {
   commitFamilyId,
   isSameCwdCommitSwitch,
   parseCommitDiffType,
-  parseJjCommitDiffType,
   parseWorktreeDiffType,
   resolveBaseBranch,
   getSinceBaseSections,
@@ -59,14 +57,9 @@ import {
 } from "@plannotator/shared/gitbutler-core";
 import {
   getCommitDiffInfo,
-  getJjCommitDiffInfo,
   listCommitHistory,
-  listJjCommitHistory,
-  resolveJjCommitRailBase,
   type CommitDiffInfo,
 } from "@plannotator/shared/commit-history";
-import { runtime as jjRuntime } from "./jj";
-import { canonicalizeJjCommitDiffType } from "@plannotator/shared/jj-core";
 import {
   REVIEW_IMAGE_ENDPOINT,
   REVIEW_IMAGE_READ_CONCURRENCY,
@@ -104,7 +97,7 @@ import { CallFlowInstallCoordinator, callFlowInstallOriginAllowed } from "@plann
 import type { CallFlowInstallCoordinatorOptions } from "@plannotator/shared/call-flow-install";
 import { parseCallFlowInstallRequest, resolveCallFlowInstallTargets } from "@plannotator/shared/call-flow-languages";
 import type { CallFlowResponse } from "@plannotator/shared/call-flow-types";
-import { type AgentJobInfo, REVIEW_OUTPUT_FAILED, getAgentJobAnnotationContext, markJobReviewFailed } from "@plannotator/shared/agent-jobs";
+import { type AgentJobInfo, getAgentJobAnnotationContext } from "@plannotator/shared/agent-jobs";
 import { detectGeneratedFiles, detectGeneratedFilesByName } from "@plannotator/shared/generated-files";
 import { getRepoInfo } from "./repo";
 import { handleImage, handleUpload, handleApiNotFound, handleFavicon, handleCustomThemesScript, customThemesPage, readDraftGenerationFromBody, readDraftGenerationFromUrl, missingDraftResponse } from "./shared-handlers";
@@ -114,21 +107,8 @@ import { captureReviewProgress, handleReviewProgress } from "@plannotator/shared
 import { createEditorAnnotationHandler } from "./editor-annotations";
 import { createExternalAnnotationHandler } from "./external-annotations";
 import { createAgentJobHandler } from "./agent-jobs";
-import {
-  composeCodexReviewPrompt,
-  buildCodexCommand,
-  generateOutputPath,
-  parseCodexOutput,
-  transformReviewFindings,
-} from "./codex-review";
 import { buildAgentReviewUserMessage, buildAgentReviewUserMessageForTarget, type WorkspaceReviewPromptContext } from "./agent-review-message";
-import {
-  composeClaudeReviewPrompt,
-  buildClaudeCommand,
-  parseClaudeStreamOutput,
-  transformClaudeFindings,
-} from "./claude-review";
-import { createGuideSession, GUIDE_EMPTY_OUTPUT_ERROR } from "./guide/guide-review";
+import { buildGuideUserMessage, composeGuideMarkerPrompt, composeGuideMarkerRepairPrompt, createGuideSession, GUIDE_EMPTY_OUTPUT_ERROR } from "./guide/guide-review";
 import { createGuideStoreSession, normalizeGuideTitle, SAVED_GUIDE_ID_PREFIX } from "@plannotator/shared/guide-store";
 import {
   buildGuideSnapshot,
@@ -142,18 +122,13 @@ import {
 } from "@plannotator/shared/guide-format";
 import { GUIDE_VIEWER_MANIFEST } from "@plannotator/shared/guide-viewer-manifest";
 import {
-  MARKER_ENGINES,
-  resolveMarkerBinary,
   composeMarkerReviewPrompt,
-  buildMarkerCommand,
-  parseMarkerStreamOutput,
-  reduceMarkerStream,
+  parseMarkerReviewText,
   transformMarkerFindings,
   makeMarkerNonce,
   extractMarkerNonce,
-  type MarkerEngineId,
 } from "./marker-review";
-import { agentSwitchConfigToSave, agentToolSaveFailed, cookieHostConfigWrite, loadConfig, saveConfig, detectGitUser, getServerConfig, parsePackageChangesConfig, parseReviewAnalysisConfig, resolveAIEnabled, resolvePackageLookup, resolveClaudeSandbox, resolveCursorSandbox, resolveFeedbackHistory, resolveGuideHistory, resolveReviewProgress } from "./config";
+import { cookieHostConfigWrite, loadConfig, saveConfig, getServerConfig, parsePackageChangesConfig, parseReviewAnalysisConfig, resolvePackageLookup, resolveFeedbackHistory, resolveGuideHistory, resolveReviewProgress } from "./config";
 import { appendFeedbackRecord, countChangedFiles, deriveFeedbackProject, type FeedbackDecision, type FeedbackReviewTarget } from "@plannotator/shared/feedback-archive";
 import { isFaviconStyle, type FaviconStyle } from "@plannotator/shared/favicon";
 import { createAIRuntime } from "./ai-runtime";
@@ -362,8 +337,6 @@ export async function startReviewServer(
   const sourceKindAdvert = isStaticPatchMode
     ? ({ sourceKind: "patch" } as const)
     : ({} as Record<string, never>);
-  const aiEnabled = resolveAIEnabled();
-
   const workspace = options.workspace;
   const isWorkspaceMode = !!workspace;
   const hasLocalAccess = !!gitContext;
@@ -613,12 +586,9 @@ export async function startReviewServer(
     if (workspace || !gitContext) return undefined;
     const effective = parseWorktreeDiffType(diffType)?.subType ?? diffType;
     const sha = parseCommitDiffType(effective as string)?.sha;
-    const jjCommitId = parseJjCommitDiffType(effective as string)?.commitId;
-    if (!sha && !jjCommitId) return undefined;
+    if (!sha) return undefined;
     const cwd = resolveVcsCwd(diffType as DiffType, gitContext.cwd);
-    const info = jjCommitId
-      ? await getJjCommitDiffInfo(jjRuntime, jjCommitId, cwd)
-      : await getCommitDiffInfo(gitRuntime, sha!, cwd);
+    const info = await getCommitDiffInfo(gitRuntime, sha, cwd);
     return info ?? undefined;
   };
 
@@ -652,12 +622,7 @@ export async function startReviewServer(
     return generated.length > 0 ? generated : undefined;
   };
 
-  // Agent jobs — background process manager (late-binds serverUrl via getter).
-  // Spawned jobs run on this machine, so their API URL is pinned to loopback
-  // and never inherits the advertised-URL host override (a tailnet-only
-  // hostname must not break local agent jobs).
   let serverUrl = "";
-  let agentApiUrl = "";
   /**
    * The review's target as it stands at decision time (named in every
    * decision a host delivers): the active PR's URL, the workspace root, or
@@ -787,26 +752,17 @@ export async function startReviewServer(
 
   const buildCurrentAiReviewContext = (
     patch: string = currentPatch,
-    base: string = currentBase,
-    diffType: DiffType = currentDiffType as DiffType,
   ): string | undefined => {
-    if (!aiEnabled) return undefined;
+    if (!openCode) return undefined;
+    const boundedPatch = patch.length > 300_000 ? `${patch.slice(0, 300_000)}\n[Remaining patch omitted.]` : patch;
     const workspacePrompt = getWorkspacePromptContext();
     if (workspacePrompt) {
       return buildAgentReviewUserMessageForTarget(
-        { kind: "workspace", patch, workspace: workspacePrompt },
+        { kind: "workspace", patch: boundedPatch, workspace: workspacePrompt },
         true,
       );
     }
-    const hasLocalAccess = !!gitContext ||
-      (!!options.agentCwd);
-    return buildAgentReviewUserMessage(
-      patch,
-      diffType,
-      { defaultBranch: base, hasLocalAccess },
-      undefined,
-      true,
-    );
+    return buildAgentReviewUserMessage(boundedPatch, "static-patch", undefined, undefined, true);
   };
   const callFlowEnabled = (): boolean => loadConfig().reviewAnalysis?.callFlow === true;
 
@@ -876,13 +832,13 @@ export async function startReviewServer(
     });
   };
 
+  const aiRuntime = await createAIRuntime({ cwd: resolveAgentCwd(), getCwd: resolveAgentCwd });
+  const openCode = aiRuntime?.openCode;
   const agentJobs = createAgentJobHandler({
-    mode: "review",
-    getServerUrl: () => agentApiUrl,
-    getCwd: resolveAgentCwd,
+    generate: openCode ? (prompt, cwd, signal) => openCode.generate(prompt, cwd, signal) : undefined,
     serverSession,
 
-    async buildCommand(provider, config) {
+    async prepare(provider, config) {
       // Snapshot the active diff before any await so the job and its findings
       // refer to the same changes even if the reviewer switches views.
       const cwd = resolveAgentCwd();
@@ -902,10 +858,8 @@ export async function startReviewServer(
       const reviewProfile = resolveRequestedReviewProfile(requestedProfileId);
 
       const workspacePrompt = launchWorkspacePrompt;
-      const hasAgentLocalAccess = !!workspacePrompt || !!gitContext || !!options.agentCwd;
       const userMessageOptions = {
         defaultBranch: launchBase,
-        hasLocalAccess: hasAgentLocalAccess,
         ...(workspacePrompt && { workspace: workspacePrompt }),
       };
 
@@ -939,51 +893,16 @@ export async function startReviewServer(
         const changedFiles = listPatchFiles(launchPatch);
 
         const repairOf = typeof config?.repairOf === "string" ? config.repairOf : undefined;
-        let repair: { payload: string } | undefined;
-        let guideConfig = config;
-        if (repairOf) {
-          const payload = guide.getFailedPayload(repairOf);
-          if (!payload) {
-            throw new Error("No captured output to repair for that job — run the guide again instead.");
-          }
-          // Prefer the failed job's OWN engine, marker or not, when its binary
-          // is present on this machine: the failed job got far enough to
-          // produce capturable output, so that engine is PROVABLY runnable
-          // here — a fact no other candidate can claim. claude/codex are only
-          // a FALLBACK (in that order) when the failed engine's binary is
-          // missing, because binary presence alone means installed, not
-          // authenticated/usable — a broken claude repair would itself become
-          // the newest failed job and hijack the recovery panel next render,
-          // a doom loop. Marker engines' binary name can differ from the
-          // engine id (Cursor's CLI is `cursor-agent`, or Cursor's own
-          // `agent`), so resolve via resolveMarkerBinary before falling back to
-          // the engine id itself for claude/codex.
-          const failedEngine = typeof config?.engine === "string" && config.engine ? config.engine : undefined;
-          const failedMarker = failedEngine ? MARKER_ENGINES[failedEngine as MarkerEngineId] : undefined;
-          const failedEngineInstalled = failedMarker
-            ? !!(await resolveMarkerBinary(failedMarker, (name) => Bun.which(name, { PATH: childPath() }) ?? null))
-            : !!failedEngine && !!Bun.which(failedEngine, { PATH: childPath() });
-          const repairEngine =
-            failedEngine && failedEngineInstalled
-              ? failedEngine
-              : Bun.which("claude", { PATH: childPath() })
-                ? "claude"
-                : Bun.which("codex", { PATH: childPath() })
-                  ? "codex"
-                  : (failedEngine ?? "claude");
-          repair = { payload };
-          guideConfig = { ...config, engine: repairEngine };
-        }
-
-        const built = await guide.buildCommand({
-          cwd,
-          patch: launchPatch,
-          diffType: launchDiffType as DiffType,
-          options: userMessageOptions,
-          changedFiles,
-          config: guideConfig,
-          ...(repair && { repair }),
-        });
+        const repair = repairOf ? guide.getFailedPayload(repairOf) : undefined;
+        if (repairOf && !repair) throw new Error("No captured output to repair for that job — run the guide again instead.");
+        const nonce = makeMarkerNonce();
+        const prompt = repair
+          ? composeGuideMarkerRepairPrompt(repair, nonce)
+          : composeGuideMarkerPrompt(
+              buildGuideUserMessage(launchPatch, "static-patch", userMessageOptions, undefined, changedFiles),
+              nonce,
+              config.instructions,
+            );
         // A repair job's payload is the FAILED job's previously-captured
         // output, not this launch's diff — its file refs were validated
         // (and, for onJobComplete, must be re-validated) against the failed
@@ -1029,7 +948,9 @@ export async function startReviewServer(
           ...(typeof config?.instructions === "string" && config.instructions.trim() && { customInstructions: config.instructions }),
         };
         return {
-          ...built,
+          cwd: (repairOf && agentJobs.getJob(repairOf)?.cwd) || cwd,
+          label: repairOf ? "Guide Repair" : "Guided Review",
+          prompt,
           diffContext,
           reviewProfileId: reviewProfile.id,
           reviewProfileLabel: reviewProfile.label,
@@ -1049,49 +970,11 @@ export async function startReviewServer(
             patch: launchPatch,
             workspace: workspacePrompt,
           }, isCustomReview)
-        : buildAgentReviewUserMessage(launchPatch, launchDiffType as DiffType, userMessageOptions, undefined, isCustomReview);
+        : buildAgentReviewUserMessage(launchPatch, "static-patch", userMessageOptions, undefined, isCustomReview);
       const jobLabel = workspacePrompt ? "Workspace Review" : "Code Review";
 
-      if (provider === "codex") {
-        const model = typeof config?.model === "string" && config.model ? config.model : undefined;
-        const reasoningEffort = typeof config?.reasoningEffort === "string" && config.reasoningEffort ? config.reasoningEffort : undefined;
-        const fastMode = config?.fastMode === true;
-        const outputPath = generateOutputPath();
-        const prompt = composeCodexReviewPrompt(userMessage, reviewProfile);
-        const command = await buildCodexCommand({ cwd, outputPath, prompt, model, reasoningEffort, fastMode });
-        return { command, outputPath, prompt, cwd, label: jobLabel, model, reasoningEffort, fastMode: fastMode || undefined, diffContext, reviewProfileId: reviewProfile.id, reviewProfileLabel: reviewProfile.label };
-      }
-
-      if (provider === "claude") {
-        const model = typeof config?.model === "string" && config.model ? config.model : undefined;
-        const effort = typeof config?.effort === "string" && config.effort ? config.effort : undefined;
-        const prompt = composeClaudeReviewPrompt(userMessage, reviewProfile);
-        const { command, stdinPrompt } = buildClaudeCommand(prompt, model, effort, { sandbox: resolveClaudeSandbox(loadConfig()) });
-        return { command, stdinPrompt, prompt, cwd, label: jobLabel, captureStdout: true, model, effort, diffContext, reviewProfileId: reviewProfile.id, reviewProfileLabel: reviewProfile.label };
-      }
-
-      // Marker engines (Cursor, OpenCode, Pi) — one branch, same shape as Claude.
-      // None of the three has a schema flag, so composeMarkerReviewPrompt ALWAYS
-      // appends the marker-block output contract (even for a custom profile —
-      // it's the only thing that makes their prose output parseable). The
-      // engine's buildArgv passes the prompt as the trailing positional arg and
-      // threads the spawn cwd (--workspace for Cursor; OpenCode (#1609) and Pi have
-      // no cwd flag — they use the process's actual cwd, which spawnJob
-      // already sets from this same cwd).
-      // captureStdout is required: the marker block comes back on stdout NDJSON.
-      const markerEngine = MARKER_ENGINES[provider as MarkerEngineId];
-      if (markerEngine) {
-        const model = typeof config?.model === "string" && config.model ? config.model : undefined;
-        const thinking = typeof config?.thinking === "string" && config.thinking ? config.thinking : undefined;
-        // Per-job nonce embedded in the marker contract; recovered from job.prompt
-        // at parse time so echoed/quoted bare tags can't be mistaken for the payload.
-        const nonce = makeMarkerNonce();
-        const prompt = composeMarkerReviewPrompt(reviewProfile, userMessage, nonce);
-        const { command } = buildMarkerCommand(markerEngine, prompt, model, cwd, { thinking, cursorSandbox: resolveCursorSandbox(loadConfig()) });
-        return { command, prompt, cwd, label: jobLabel, captureStdout: true, model, thinking, diffContext, reviewProfileId: reviewProfile.id, reviewProfileLabel: reviewProfile.label };
-      }
-
-      return null;
+      const prompt = composeMarkerReviewPrompt(reviewProfile, userMessage, makeMarkerNonce());
+      return { prompt, cwd, label: jobLabel, diffContext, reviewProfileId: reviewProfile.id, reviewProfileLabel: reviewProfile.label };
     },
 
     async onJobComplete(job, meta) {
@@ -1117,94 +1000,10 @@ export async function startReviewServer(
         return result;
       };
 
-      // --- Codex path ---
-      if (job.provider === "codex") {
-        const output = meta.outputPath ? await parseCodexOutput(meta.outputPath) : null;
-        if (!output) {
-          // Process exited 0 but output is missing/unparseable — not a green run.
-          markJobReviewFailed(job, REVIEW_OUTPUT_FAILED);
-          return;
-        }
-
-        // Override verdict if there are blocking findings (P0/P1) — Codex's
-        // freeform correctness string can say "mostly correct" with real bugs.
-        const hasBlockingFindings = output.findings.some(f => f.priority !== null && f.priority <= 1);
-        job.summary = {
-          correctness: hasBlockingFindings ? "Issues Found" : output.overall_correctness,
-          explanation: output.overall_explanation,
-          confidence: output.overall_confidence_score,
-        };
-
-        ingest(
-          transformReviewFindings(
-            output.findings,
-            job.source,
-            cwd,
-            "Codex",
-            workspace ? (filePath) => workspace.normalizeAnnotationPath(filePath) : undefined,
-          ),
-          "codex-review",
-        );
-        return;
-      }
-
-      // --- Claude path ---
-      if (job.provider === "claude") {
-        const stdout = meta.stdout ?? "";
-        const output = parseClaudeStreamOutput(stdout);
-        if (!output) {
-          console.error(`[claude-review] Failed to parse output (${stdout.length} bytes, last 200: ${stdout.slice(-200)})`);
-          markJobReviewFailed(job, REVIEW_OUTPUT_FAILED);
-          return;
-        }
-
-        // Recompute the verdict from the findings we actually render. Nothing is
-        // dropped now (un-pinnable findings become file/general comments), so the
-        // count reflects reality and the card can never claim more than it shows.
-        const transformed = transformClaudeFindings(
-          output.findings,
-          job.source,
-          cwd,
-          workspace ? (filePath) => workspace.normalizeAnnotationPath(filePath) : undefined,
-        );
-        const counts = { important: 0, nit: 0, pre_existing: 0 };
-        for (const a of transformed) counts[a.severity]++;
-        const total = counts.important + counts.nit + counts.pre_existing;
-        job.summary = {
-          correctness: counts.important === 0 ? "Correct" : "Issues Found",
-          explanation: `${counts.important} important, ${counts.nit} nit, ${counts.pre_existing} pre-existing`,
-          confidence: total === 0 ? 1.0 : Math.max(0, 1.0 - (counts.important * 0.2)),
-        };
-
-        ingest(transformed, "claude-review");
-        return;
-      }
-
-      // --- Marker path (Cursor, OpenCode, Pi) ---
-      // FAIL-CLOSED: marker output is prompt-enforced (no schema flag), so any
-      // missing/malformed/schema/transform/insertion failure must MUTATE the job
-      // to failed — NEVER throw (agent-jobs.ts swallows throws, silently leaving
-      // an exit-0 job marked done). Mirrors the guide fail-closed pattern below.
-      // Findings carry nullable file/line, classified into line/whole-file/
-      // general by transformMarkerFindings — nothing is dropped (same as Claude).
-      const markerEngine = MARKER_ENGINES[job.provider as MarkerEngineId];
-      if (markerEngine) {
-        // Recover the per-job nonce embedded in the prompt; without it no block
-        // can be trusted, so parse fails closed below.
+      if (job.provider === "opencode") {
         const nonce = extractMarkerNonce(job.prompt ?? "");
-        const output = nonce && meta.stdout ? parseMarkerStreamOutput(meta.stdout, markerEngine, nonce) : null;
-        if (!output) {
-          job.status = "failed";
-          const providerError = meta.stdout
-            ? reduceMarkerStream(meta.stdout, markerEngine).providerError
-            : null;
-          job.error = providerError
-            ?? `${markerEngine.author} review output missing or unparseable (no valid marker JSON).`;
-          if (providerError) {
-            console.error(`[${markerEngine.id}-review] Provider error for job ${job.id}: ${providerError}`);
-          }
-          return;
-        }
+        const output = nonce ? parseMarkerReviewText(meta.text, nonce) : null;
+        if (!output) throw new Error("OpenCode did not return valid review findings.");
 
         // Derive the verdict from finding severities (like Claude) rather than
         // trusting the model's free-form `correctness` string. Marker engines
@@ -1224,16 +1023,14 @@ export async function startReviewServer(
           transformMarkerFindings(
             output.findings,
             job.source,
-            markerEngine.author,
+            "OpenCode",
             cwd,
             workspace ? (filePath) => workspace.normalizeAnnotationPath(filePath) : undefined,
           ),
-          `${markerEngine.id}-review`,
+          "opencode-review",
         );
         if (result && "error" in result) {
-          job.status = "failed";
-          job.error = `${markerEngine.author} annotation insertion failed: ${result.error}`;
-          return;
+          throw new Error(`OpenCode annotation insertion failed: ${result.error}`);
         }
         return;
       }
@@ -1273,12 +1070,6 @@ export async function startReviewServer(
     },
   });
 
-  // AI provider setup (graceful — capabilities report unavailable if no provider is registered)
-  // Set once bound: "Ask this session" answers only a loopback Host with this port.
-  // The localhost subdomain this session is advertised at (#2184), read once:
-  // the one extra name the loopback Host checks accept.
-  const aiRuntime = aiEnabled ? await createAIRuntime({ cwd: resolveAgentCwd(), getCwd: resolveAgentCwd }) : null;
-
   const isRemote = isRemoteSession();
   // Hover cards for issue, PR and MR links (ref-cards.ts): nothing runs until a card is asked for, and
   // never in remote mode. In a `--tailscale` session only this machine's tabs and the tailnet owner's get
@@ -1292,7 +1083,6 @@ export async function startReviewServer(
   diagramEngineAssets.warm();
   const semDiffAssets = createSemDiffAssets(options.semDiff);
   semDiffAssets.warm();
-  const gitUser = detectGitUser(workspace?.root ?? gitContext?.cwd);
 
   // Detect repo info (cached for this session)
   // In PR mode, derive from metadata instead of local git
@@ -1695,8 +1485,8 @@ export async function startReviewServer(
             const generatedFiles = await buildGeneratedFilesSidecar(servedPatch, servedDiffType as string);
             return Response.json({
               rawPatch: servedPatch,
-              aiReviewContext: buildCurrentAiReviewContext(servedPatch, servedBase, servedDiffType as DiffType),
-              aiEnabled,
+              aiReviewContext: buildCurrentAiReviewContext(servedPatch),
+              aiEnabled: !!openCode,
               gitRef: servedGitRef,
               snapshotId: servedSnapshotId,
               localDraftTarget: servedDraftTarget,
@@ -1745,7 +1535,7 @@ export async function startReviewServer(
               ...(generatedFiles && { generatedFiles }),
               ...(servedError && { error: servedError }),
               callFlow: await getCallFlowAdvert(servedDiffType as DiffType),
-              serverConfig: getServerConfig(gitUser, undefined, { cookieHost: !isRemote }),
+              serverConfig: getServerConfig(undefined, { cookieHost: !isRemote, hideAgentSettings: true }),
             });
           }
 
@@ -1953,18 +1743,16 @@ export async function startReviewServer(
             }
           }
 
-          // API: Linear commit history for the Commits panel. Local git and
-          // jj sessions only — PR/workspace/GitButler/p4 don't offer the view
+          // API: Linear commit history for the Commits panel. Local Git only
           // (same gate the client's commitsCapable applies). Computed against
           // the same cwd as the active diff so worktree sessions list the
           // worktree's history, and against the active base so the divider
-          // matches the review baseline (jj: the compare target, see
-          // resolveJjCommitRailBase).
+          // matches the review baseline.
           if (url.pathname === "/api/commits" && req.method === "GET") {
             const commitsVcs = sessionVcsType ?? "git";
-            if (!gitContext || workspace || (commitsVcs !== "git" && commitsVcs !== "jj")) {
+            if (!gitContext || workspace || commitsVcs !== "git") {
               return Response.json(
-                { error: "Commit history is only available for local git and jj reviews" },
+                { error: "Commit history is only available for local Git reviews" },
                 { status: 400 },
               );
             }
@@ -1977,15 +1765,7 @@ export async function startReviewServer(
             };
             let page;
             try {
-              if (commitsVcs === "jj") {
-                const railBase = resolveJjCommitRailBase(currentBase, clientGitContext ?? gitContext);
-                page = await listJjCommitHistory(jjRuntime, railBase.target, commitsCwd, {
-                  ...pageOptions,
-                  baseLabel: railBase.label,
-                });
-              } else {
-                page = await listCommitHistory(gitRuntime, currentBase, commitsCwd, pageOptions);
-              }
+              page = await listCommitHistory(gitRuntime, currentBase, commitsCwd, pageOptions);
             } catch (err) {
               return Response.json(
                 { error: err instanceof Error ? err.message : "Could not read commit history" },
@@ -2099,12 +1879,6 @@ export async function startReviewServer(
                 ? resolveAvailableDiffType(clientGitContext, requestedDiffType, nextBaseExplicitlyChosen)
                 : { diffType: requestedDiffType };
               newDiffType = availability.diffType;
-              // A jj revision rewritten since it was opened (the working copy
-              // on every save) resolves to its change's current version, so
-              // Refresh and rail clicks never serve a frozen snapshot.
-              if (sessionVcsType === "jj") {
-                newDiffType = await canonicalizeJjCommitDiffType(jjRuntime, newDiffType as string, gitContext?.cwd) as DiffType;
-              }
               const base = resolveReviewBase(
                 requestedBase,
                 nextBaseExplicitlyChosen,
@@ -2193,17 +1967,14 @@ export async function startReviewServer(
               baseExplicitlyChosen = nextBaseExplicitlyChosen;
               currentError = result.error;
               draftKey = contentHash(currentPatch);
-              // Session-context adoption is provider-scoped: gitbutler (as
-              // before this change) because its stack topology is the
-              // context, and jj so the jj-line availability/fallback stays
-              // fresh across reloads. Plain git keeps the launch-frozen
+              // GitButler adopts updated stack topology. Plain git keeps the launch-frozen
               // session context — currentBranch labels the launch cwd in
               // WorktreePicker and the feedback branch label, and adopting a
               // switched worktree's recomputed context here would repoint
               // those on the next reload.
               const adoptContext =
                 updatedContext !== undefined &&
-                (sessionVcsType === "gitbutler" || sessionVcsType === "jj");
+                sessionVcsType === "gitbutler";
               const nextClientContext = adoptContext
                 ? updatedContext
                 : clientGitContext;
@@ -2228,7 +1999,7 @@ export async function startReviewServer(
                 rawPatch: currentPatch,
                 // Snapshot args: robust against a future await sneaking in
                 // between the epoch check and this response.
-                aiReviewContext: buildCurrentAiReviewContext(result.patch, currentBase),
+                aiReviewContext: buildCurrentAiReviewContext(result.patch),
                 gitRef: currentGitRef,
                 snapshotId: currentSnapshotId(),
                 localDraftTarget: nextDraftTarget,
@@ -2666,19 +2437,11 @@ export async function startReviewServer(
               return Response.json({ error: "Cross-origin config writes are not allowed" }, { status: 403 });
             }
             try {
-              const body = (await req.json()) as { agentSwitch?: unknown; displayName?: string; diffOptions?: Record<string, unknown>; reviewDefaults?: Record<string, { defaultDiffType?: string }>; theme?: Record<string, unknown>; favicon?: FaviconStyle; agentTool?: unknown; reviewAnalysis?: Record<string, unknown>; packageChanges?: unknown; conventionalComments?: boolean; conventionalLabels?: unknown[] | null };
+              const body = (await req.json()) as { diffOptions?: Record<string, unknown>; theme?: Record<string, unknown>; favicon?: FaviconStyle; reviewAnalysis?: Record<string, unknown>; packageChanges?: unknown; conventionalComments?: boolean; conventionalLabels?: unknown[] | null };
               const toSave: Record<string, unknown> = {};
-              // OpenCode's agent switch (#1390): a known shape or nothing is saved.
-              const agentSwitch = agentSwitchConfigToSave(body);
-              if (agentSwitch === null) return Response.json({ error: "Invalid agentSwitch" }, { status: 400 });
-              if (agentSwitch !== undefined) toSave.agentSwitch = agentSwitch;
-              if (body.displayName !== undefined) toSave.displayName = body.displayName;
               if (body.diffOptions !== undefined) toSave.diffOptions = body.diffOptions;
-              if (body.reviewDefaults !== undefined) toSave.reviewDefaults = body.reviewDefaults;
               if (body.theme !== undefined) toSave.theme = body.theme;
               if (isFaviconStyle(body.favicon)) toSave.favicon = body.favicon;
-              // The agent tool switch: boolean only; it applies to the next session.
-              if (typeof body.agentTool === "boolean") toSave.agentTool = body.agentTool;
               if (body.reviewAnalysis !== undefined) {
                 const reviewAnalysis = parseReviewAnalysisConfig(body.reviewAnalysis);
                 if (!reviewAnalysis) {
@@ -2700,7 +2463,6 @@ export async function startReviewServer(
               const cookieHostWrite = cookieHostConfigWrite((body as { cookieHost?: unknown }).cookieHost, isRemote);
               if (cookieHostWrite && cookieHostWrite.status !== 200) return Response.json(cookieHostWrite.body, { status: cookieHostWrite.status });
               if (Object.keys(toSave).length > 0 && !saveConfig(toSave as Parameters<typeof saveConfig>[0])) return Response.json({ error: "config.json could not be saved; nothing changed. A config.json that is not valid JSON is never written over: fix or remove it." }, { status: 500 });
-              if (agentToolSaveFailed(toSave)) return Response.json({ error: "Could not save the setting to config.json." }, { status: 500 });
               return Response.json(cookieHostWrite ? cookieHostWrite.body : { ok: true });
             } catch {
               return Response.json({ error: "Invalid request" }, { status: 400 });
@@ -2715,18 +2477,6 @@ export async function startReviewServer(
           // API: Upload image -> save to temp -> return path
           if (url.pathname === "/api/upload" && req.method === "POST") {
             return handleUpload(req);
-          }
-
-          // AI-disabled review sessions expose no agent discovery or launch
-          // surface. The exact endpoint above is feedback routing, not a job.
-          if (!aiEnabled && url.pathname.startsWith("/api/agents/")) {
-            if (
-              url.pathname.slice("/api/agents/".length) === "capabilities" &&
-              req.method === "GET"
-            ) {
-              return Response.json({ mode: "review", providers: [], available: false });
-            }
-            return Response.json({ error: "AI features disabled" }, { status: 503 });
           }
 
           // API: Review profiles (custom reviews discovery). Reloaded per
@@ -2908,7 +2658,6 @@ export async function startReviewServer(
                 approved?: boolean;
                 feedback: string;
                 annotations: unknown[];
-                agentSwitch?: string;
                 draftGeneration?: number;
                 platform?: unknown;
               };
@@ -2943,7 +2692,6 @@ export async function startReviewServer(
                 ...(options.includeReviewDirectory && !isStaticPatchMode
                   ? { reviewDirectory: resolveAgentCwd() } : {}),
                 annotations: annotationsValue,
-                agentSwitch: body.agentSwitch,
                 // The platform path's status post marks itself; only a real
                 // boolean true counts, so consumers never infer it from an
                 // empty annotation list (PR description, PR comment and
@@ -3043,13 +2791,12 @@ export async function startReviewServer(
 
   const port = server.port!;
   serverUrl = buildAdvertisedUrl(port);
-  agentApiUrl = `http://127.0.0.1:${port}`;
   const exitHandler = () => agentJobs.killAll();
   process.once("exit", exitHandler);
 
   const stop = () => {
     process.removeListener("exit", exitHandler);
-    agentJobs.killAll();
+    agentJobs.dispose();
     callFlowService.cancelAll();
     aiRuntime?.dispose();
     repoWatch.closeAll();

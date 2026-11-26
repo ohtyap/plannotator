@@ -32,7 +32,7 @@ const ENV_KEYS = [
   "PLANNOTATOR_DATA_DIR",
   "PLANNOTATOR_PORT",
   "PLANNOTATOR_REMOTE",
-  "PLANNOTATOR_AI",
+  "PLANNOTATOR_OPENCODE_URL",
   "PLANNOTATOR_FILE_BROWSER_MAX_FILES",
 ] as const;
 
@@ -94,7 +94,7 @@ export function defineFileBrowserCapScenarios(
       process.env.PLANNOTATOR_DATA_DIR = join(root, "data");
       delete process.env.PLANNOTATOR_PORT;
       process.env.PLANNOTATOR_REMOTE = "0";
-      process.env.PLANNOTATOR_AI = "disabled";
+      process.env.PLANNOTATOR_OPENCODE_URL = "";
       delete process.env.PLANNOTATOR_FILE_BROWSER_MAX_FILES;
       folder = join(root, "folder");
       mkdirSync(folder);

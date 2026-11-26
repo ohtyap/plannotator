@@ -166,8 +166,7 @@ const planActionShortcuts: ShortcutSection = {
   title: 'Actions',
   shortcuts: [
     { keys: [modKey, enter], desc: 'Submit / Approve' },
-    { keys: [modKey, 'S'], desc: 'Save to notes app' },
-    { keys: [modKey, 'P'], desc: 'Print plan' },
+    { keys: [modKey, 'S'], desc: 'Save source-file edits' },
     { keys: ['Esc'], desc: 'Close dialog' },
   ],
 };
@@ -176,8 +175,7 @@ const annotateActionShortcuts: ShortcutSection = {
   title: 'Actions',
   shortcuts: [
     { keys: [modKey, enter], desc: 'Send annotations' },
-    { keys: [modKey, 'S'], desc: 'Save to notes app' },
-    { keys: [modKey, 'P'], desc: 'Print document' },
+    { keys: [modKey, 'S'], desc: 'Save source-file edits' },
   ],
 };
 
@@ -185,7 +183,6 @@ const annotateSidebarShortcuts: ShortcutSection = {
   title: 'Sidebar',
   shortcuts: [
     { keys: [modKey, 'B'], desc: 'Toggle Contents sidebar' },
-    { keys: [modKey, shiftKey, 'B'], desc: 'Toggle Files sidebar', hint: 'Available when the Files tab is shown.' },
     { keys: [shiftKey, shiftKey], desc: 'Toggle Agent TUI sidebar', hint: 'Available when the Agent control is shown.' },
   ],
 };

@@ -9,10 +9,11 @@ import { storage } from './storage';
 
 const STORAGE_KEY = 'plannotator-default-notes-app';
 
-export type DefaultNotesApp = 'obsidian' | 'bear' | 'octarine' | 'notion' | 'download' | 'ask';
+export type DefaultNotesApp = 'obsidian' | 'bear' | 'octarine' | 'notion' | 'ask';
 
 export function getDefaultNotesApp(): DefaultNotesApp {
-  return (storage.getItem(STORAGE_KEY) as DefaultNotesApp) || 'ask';
+  const value = storage.getItem(STORAGE_KEY);
+  return value === 'obsidian' || value === 'bear' || value === 'octarine' || value === 'notion' ? value : 'ask';
 }
 
 export function saveDefaultNotesApp(app: DefaultNotesApp): void {

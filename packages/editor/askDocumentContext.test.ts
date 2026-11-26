@@ -35,6 +35,15 @@ describe('isReadableDocumentPath', () => {
 });
 
 describe('planAskDocumentContext', () => {
+  test('tool-free chat receives the contents of changed files and edits, not an instruction to open a path', () => {
+    const doc = (path: string, content: string) => file(path, content, { inlineContent: true });
+    const notes = askAlong([doc('/w/a.md', 'first'), doc('/w/b.md', 'second'), doc('/w/b.md', 'edited'), doc('/w/b.md', 'edited')]);
+    expect(notes[1]).toContain('/w/b.md');
+    expect(notes[1]).toContain('second');
+    expect(notes[1]).not.toContain('read the file');
+    expect(notes[2]).toContain('edited');
+    expect(notes[3]).toBe('');
+  });
   test('the question that creates the session carries no note', () => {
     const [first] = askAlong([file('/w/alpha.md')]);
     expect(first).toBe('');

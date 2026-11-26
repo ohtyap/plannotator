@@ -19,6 +19,7 @@ import { AnnotationPanel } from './AnnotationPanel';
 import { AnnotationType, type Annotation, type CodeAnnotation } from '../types';
 import { parseMarkdownToBlocks } from '../utils/parser';
 import { resetIdentityProvider, setIdentityProvider } from '../utils/identity';
+import { setAnnotationIdentityEnabled } from '../utils/annotationIdentityPolicy';
 
 const hasDom = typeof document !== 'undefined';
 
@@ -159,5 +160,18 @@ describe('AnnotationPanel worst-case cards', () => {
     const bdi = c.querySelector('[data-annotation-author] bdi')!;
     expect(bdi.textContent).toBe(RTL_NAME);
     expect(bdi.contains(c.querySelector('[data-annotation-time]'))).toBe(false);
+  });
+
+  test.skipIf(!hasDom)('single-user comments retain their text and timestamp but not a stored author', async () => {
+    setAnnotationIdentityEnabled(false);
+    try {
+      const row = card(await mount([comment('old', { author: LONG_NAME })]), 'old');
+      expect(row.textContent).toContain('A comment');
+      expect(row.textContent).not.toContain(LONG_NAME);
+      expect(row.querySelector('[data-annotation-author], [data-annotation-me]')).toBeNull();
+      expect(row.querySelector('[data-annotation-time]')?.textContent).toBe('6m');
+    } finally {
+      setAnnotationIdentityEnabled(true);
+    }
   });
 });

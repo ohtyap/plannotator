@@ -22,7 +22,7 @@ import { copyTextPreservingFocus } from "../../utils/clipboard";
 import { getRichCopyEnabled } from "../../utils/richCopyPolicy";
 import { useHighlightCopy } from "../../utils/highlightCopy";
 import { elementIdentityForAskAI } from "../../utils/parser";
-import { getIdentity } from "../../utils/identity";
+import { getAnnotationAuthor } from "../../utils/identity";
 import { THUMBS_UP_LABEL } from "../../utils/quickLabels";
 import { hashDraftScope } from "../../utils/draftScopeHash";
 import {
@@ -1622,7 +1622,7 @@ export const HtmlViewer = forwardRef<ViewerHandle, HtmlViewerProps>(
           type: AnnotationType.GLOBAL_COMMENT,
           text: text.trim(),
           originalText: "",
-          author: getIdentity(),
+          author: getAnnotationAuthor(),
           createdA: Date.now(),
           images,
           ...(mentions && mentions.length > 0 ? { mentions } : {}),

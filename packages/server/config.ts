@@ -1,9 +1,7 @@
 export {
   loadConfig,
   saveConfig,
-  detectGitUser,
   getServerConfig,
-  resolveAIEnabled,
   resolveAnnotateHistory,
   resolveClaudeSandbox,
   resolveCursorSandbox,

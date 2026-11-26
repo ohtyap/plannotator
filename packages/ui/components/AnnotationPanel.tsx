@@ -5,6 +5,7 @@ import { useMentionAutocomplete } from '../hooks/useMentionAutocomplete';
 import { MentionAutocompleteMenu, mentionActiveOptionId } from './MentionAutocomplete';
 import { buildSectionRefIndex, parseSectionRefs } from '../utils/sectionRefs';
 import { isCurrentUser } from '../utils/identity';
+import { visibleAnnotationAuthor } from '../utils/annotationIdentityPolicy';
 import { ImageThumbnail } from './ImageThumbnail';
 import { EditorAnnotationCard } from './EditorAnnotationCard';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -1248,7 +1249,7 @@ const AnnotationCard: React.FC<{
             </span>
           </HostTitle>
         )}
-        <CardByline author={annotation.author} isMe={isMe} timestamp={annotation.createdA} />
+        <CardByline author={visibleAnnotationAuthor(annotation.author)} isMe={isMe} timestamp={annotation.createdA} />
         {/* Host header slot (a status stamp etc.) — interactions inside it
             must not toggle card selection, exactly like the footer slot.
             Rendered under readOnly too: its contents are host-owned. */}
@@ -1449,7 +1450,7 @@ const CodeAnnotationCard: React.FC<{
         {isGlobal
           ? <span className={cn('text-[11px] font-medium', TYPE_COLOR[AnnotationType.GLOBAL_COMMENT])}>{TYPE_LABEL[AnnotationType.GLOBAL_COMMENT]}</span>
           : <span className="text-[11px] font-medium text-primary">Code</span>}
-        <CardByline author={annotation.author} isMe={isMe} timestamp={annotation.createdAt} />
+        <CardByline author={visibleAnnotationAuthor(annotation.author)} isMe={isMe} timestamp={annotation.createdAt} />
         {!readOnly && (
           <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
             {onEdit && !isEditing && (

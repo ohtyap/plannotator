@@ -515,7 +515,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({
   if (dirs.length === 0) {
     return (
       <div className="p-3 text-[11px] text-muted-foreground">
-        No directories configured. Add directories in Settings → Files.
+        No directories to show.
       </div>
     );
   }

@@ -1,36 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Square } from 'lucide-react';
 import type { AgentJobInfo, AgentCapabilities } from '../types';
 import { isTerminalStatus } from '@plannotator/core/agent-jobs';
 import { GUIDE_ENGINE_LABEL } from '@plannotator/core/guide';
-import { CLAUDE_FALLBACK_MODELS, CODEX_FALLBACK_MODELS, modelLabel } from '@plannotator/core/model-catalog';
 import type { ReviewEngine } from '../hooks/useAgentSettings';
 import type { AgentLaunchParams } from '../hooks/useAgentJobs';
-import { useLaunchConfig, PI_THINKING } from '../hooks/useLaunchConfig';
-import type { ModelCatalogs } from '../hooks/useModelCatalogs';
-import { LaunchPad } from './agents/LaunchPad';
-import { JobRow, rerunParams, formatDuration, ElapsedTime } from './agents/JobRow';
+import { JobRow, formatDuration, ElapsedTime } from './agents/JobRow';
 import { AddReviewDialog } from './agents/AddReviewDialog';
 import { findingsOf, type FindingLike } from './agents/jobFindings';
 
 export type { AgentLaunchParams } from '../hooks/useAgentJobs';
-export { PI_THINKING, formatDuration, ElapsedTime };
+export { formatDuration, ElapsedTime };
 export type { FindingLike };
 
 export const REVIEW_ENGINE_LABEL: Record<ReviewEngine, string> = GUIDE_ENGINE_LABEL;
 
 export type AgentLaunchResult = AgentJobInfo | null | void;
 
-const RERUNNABLE = new Set(['claude', 'codex', 'cursor', 'opencode', 'pi', 'copilot', 'guide']);
-
-export function jobModelName(job: AgentJobInfo, catalogs: Pick<ModelCatalogs, 'claude' | 'codex'>): string | null {
-  const engine = job.provider === 'guide' ? job.engine : job.provider;
-  if (!job.model) return engine === 'claude' || engine === 'codex' ? null : 'Default';
-  if (engine === 'claude') return modelLabel([...catalogs.claude.models, ...CLAUDE_FALLBACK_MODELS], job.model);
-  if (engine === 'codex') return modelLabel([...catalogs.codex.models, ...CODEX_FALLBACK_MODELS], job.model);
-  if (engine === 'cursor' && job.model.toLowerCase() === 'auto') return 'Auto';
-  return job.model;
-}
+const DEFAULT_PROFILE = { id: 'builtin:default', label: 'Default' };
 
 interface AgentsTabProps {
   jobs: AgentJobInfo[];
@@ -72,8 +59,21 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
   scope,
   guides,
 }) => {
-  const config = useLaunchConfig(capabilities, { guideLaunchable });
+  const reviewReady = capabilities?.providers.some(p => p.id === 'opencode' && p.available) === true;
+  const guideReady = guideLaunchable && capabilities?.providers.some(p => p.id === 'guide' && p.available) === true;
   const [addReviewOpen, setAddReviewOpen] = useState(false);
+  const [profiles, setProfiles] = useState([DEFAULT_PROFILE]);
+  const [profileId, setProfileId] = useState(DEFAULT_PROFILE.id);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!reviewReady) return;
+    let mounted = true;
+    fetch('/api/agents/review-profiles').then(r => r.ok ? r.json() : null).then(result => {
+      if (mounted && Array.isArray(result?.profiles) && result.profiles.length) setProfiles(result.profiles);
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, [reviewReady]);
 
   const sortedJobs = useMemo(
     () =>
@@ -86,7 +86,23 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
     [jobs],
   );
   const runningCount = jobs.filter((j) => !isTerminalStatus(j.status)).length;
-  const launch = async (params: AgentLaunchParams) => onLaunch(params);
+  const launch = async (kind: 'opencode' | 'guide', reviewProfileId = profileId) => {
+    if (starting || (kind === 'guide' ? !guideReady : !reviewReady)) return;
+    setStarting(kind);
+    setLaunchError(null);
+    try {
+      const job = await onLaunch({
+        provider: kind,
+        label: kind === 'guide' ? 'Guided Review' : 'Code Review',
+        ...(kind === 'opencode' && reviewProfileId !== DEFAULT_PROFILE.id && { reviewProfileId }),
+      });
+      if (job === null) setLaunchError('OpenCode could not start the review.');
+    } catch (error) {
+      setLaunchError(error instanceof Error ? error.message : 'OpenCode could not start the review.');
+    } finally {
+      setStarting(null);
+    }
+  };
 
   const openJob = (job: AgentJobInfo, findings: readonly FindingLike[]) => {
     if (job.provider === 'guide') {
@@ -100,7 +116,31 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
 
   return (
     <div className="flex flex-col pb-3" data-agents-tab="">
-      <LaunchPad config={config} scope={scope} onLaunch={launch} onAddReview={() => setAddReviewOpen(true)} />
+      <div className="space-y-2 px-4 py-3">
+        {scope && <div data-launch-scope="">{scope}</div>}
+        <div className="flex items-center justify-between gap-2" data-launch-row="guide">
+          <span className="text-sm">Guided Review</span>
+          <button type="button" disabled={!guideReady || starting !== null} onClick={() => void launch('guide')} data-launch-start="guide"
+            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">
+            {starting === 'guide' ? 'Starting…' : 'Start'}
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-2" data-launch-row="review">
+          <span className="text-sm">Review agent</span>
+          <button type="button" disabled={!reviewReady || starting !== null} onClick={() => void launch('opencode')} data-launch-start="review"
+            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">
+            {starting === 'opencode' ? 'Starting…' : 'Start'}
+          </button>
+        </div>
+        {reviewReady && <div className="flex items-center gap-2 text-xs">
+          <select aria-label="Review profile" value={profileId} onChange={event => setProfileId(event.target.value)} className="min-w-0 rounded border border-border bg-background px-2 py-1">
+            {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+          </select>
+          <button type="button" onClick={() => setAddReviewOpen(true)} className="text-muted-foreground hover:text-foreground">Add review profile</button>
+        </div>}
+        {!reviewReady && <p className="text-xs text-muted-foreground">OpenCode V2 is unavailable.</p>}
+        {launchError && <p role="alert" className="text-xs text-destructive">{launchError}</p>}
+      </div>
 
       {sortedJobs.length > 0 && (
         <section aria-label="Runs" className="border-t border-border/60 mt-2">
@@ -127,12 +167,16 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
                 <JobRow
                   key={job.id}
                   job={job}
-                  modelName={jobModelName(job, config.catalogs)}
+                  modelName={job.model ?? null}
                   findings={findings}
                   onOpen={() => openJob(job, findings)}
                   onDetails={onOpenJobDetail ? () => onOpenJobDetail(job.id) : undefined}
                   onCancel={() => onKillJob(job.id)}
-                  onRerun={RERUNNABLE.has(job.provider) ? () => void onLaunch(rerunParams(job) as AgentLaunchParams) : undefined}
+                  onRerun={job.provider === 'guide'
+                    ? () => void launch('guide')
+                    : job.provider === 'opencode'
+                      ? () => void launch('opencode', job.reviewProfileId ?? DEFAULT_PROFILE.id)
+                      : undefined}
                 />
               );
             })}
@@ -147,10 +191,9 @@ export const AgentsTab: React.FC<AgentsTabProps> = ({
           onClose={() => setAddReviewOpen(false)}
           onEnabled={(name) => {
             const id = `skill:${name}`;
-            config.addProfile(id, name);
-            config.setProfileId(id);
+            setProfiles(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, label: name }]);
+            setProfileId(id);
             setAddReviewOpen(false);
-            config.refreshProfiles();
           }}
         />
       )}

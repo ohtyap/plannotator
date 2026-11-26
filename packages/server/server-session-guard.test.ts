@@ -33,7 +33,7 @@ import { createFakePRRuntime } from "../../tests/helpers/fake-pr-runtime";
 
 const MINIMAL_HTML = "<html><body>Plannotator</body></html>";
 const PATCH = "diff --git a/src/parse.ts b/src/parse.ts\n@@ -1 +1 @@\n-a\n+b\n";
-const ENV_KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_AI", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE"] as const;
+const ENV_KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE"] as const;
 
 let saved: Record<string, string | undefined> | null = null;
 const tempDirs: string[] = [];
@@ -46,7 +46,7 @@ function sandbox(): string {
   const dir = mkdtempSync(join(tmpdir(), "plannotator-server-session-"));
   tempDirs.push(dir);
   process.env.PLANNOTATOR_DATA_DIR = dir;
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_REMOTE = "0";
   delete process.env.PLANNOTATOR_PORT;
   return dir;

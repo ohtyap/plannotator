@@ -13,12 +13,11 @@
  *    review and annotate servers, OpenCode's, Pi's), and this local call takes milliseconds; if it fails, nothing shows
  *    and nothing is used up.
  * Only where the page's own gates hold (`eligible`): a live session, never shared, archive, read-only, the share portal,
- * goal setup or the VS Code webview; and auto-close off, read at load and again at the decision (with it on, the tab
- * closes on the decision). The card's button is always the plain link here: starring with gh needs the server, which
+ * goal setup or the VS Code webview; and a host that keeps the tab open, checked at load and again at the decision.
+ * The card's button is always the plain link here: starring with gh needs the server, which
  * stops right after (the Inbox stars with gh).
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { getAutoCloseDelay } from '../utils/storage';
 import { StarAskCard } from './StarAskCard';
 
 export interface StarAskClient {
@@ -52,7 +51,7 @@ export interface StarAskDoneScreenInput {
   decided: boolean;
   /** Tests: the routes. */
   client?: StarAskClient;
-  /** Tests: the auto-close delay (default: the saved setting). */
+  /** Optional host policy. Without one, the completion screen auto-closes. */
   autoCloseDelay?: () => string;
 }
 
@@ -60,7 +59,7 @@ export interface StarAskDoneScreenInput {
  * The card for the done screen, or null. Claims (checks) once per page, when `ready` and `eligible` first hold with
  * auto-close off; at the decision, if the claim said it may show, stamps it and draws the card.
  */
-export function useStarAskDoneScreen({ ready, eligible, decided, client = starAskHttpClient, autoCloseDelay = getAutoCloseDelay }: StarAskDoneScreenInput): ReactNode | null {
+export function useStarAskDoneScreen({ ready, eligible, decided, client = starAskHttpClient, autoCloseDelay }: StarAskDoneScreenInput): ReactNode | null {
   const [mayShow, setMayShow] = useState(false);
   const [shown, setShown] = useState(false);
   const [gone, setGone] = useState(false);
@@ -74,8 +73,7 @@ export function useStarAskDoneScreen({ ready, eligible, decided, client = starAs
   useEffect(() => {
     if (!ready || !eligible || asked.current) return;
     asked.current = true;
-    // Auto-close on: the tab closes on the decision, so it never asks.
-    if (closeDelay.current() !== 'off') return;
+    if (closeDelay.current?.() !== 'off') return;
     api.current
       .claim()
       .then((answer) => {
@@ -87,8 +85,8 @@ export function useStarAskDoneScreen({ ready, eligible, decided, client = starAs
   useEffect(() => {
     if (!decided || !eligible || !mayShow || stamped.current) return;
     stamped.current = true;
-    // Auto-close turned on during the review: the tab closes now, so nothing is used up.
-    if (closeDelay.current() !== 'off') return;
+    // If the tab will close, leave the ask unused.
+    if (closeDelay.current?.() !== 'off') return;
     api.current
       .shown()
       .then((answer) => {

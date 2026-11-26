@@ -8,15 +8,10 @@ import {
 import { useTheme } from './ThemeProvider';
 import { THEME_MODES } from './themeModes';
 import { ReviewAgentsIcon } from './ReviewAgentsIcon';
-import { MenuVersionSection } from './MenuVersionSection';
 
 interface PlanHeaderMenuProps {
-  appVersion: string;
   onOpenSettings: () => void;
-  onOpenExport: () => void;
   onCopyAgentInstructions: () => void;
-  onDownloadAnnotations: () => void;
-  onPrint: () => void;
   onCopyShareLink: () => void;
   onOpenImport: () => void;
   onSaveToObsidian: () => void;
@@ -44,12 +39,8 @@ export interface CompactPlanAction {
 }
 
 export const PlanHeaderMenu: React.FC<PlanHeaderMenuProps> = ({
-  appVersion,
   onOpenSettings,
-  onOpenExport,
   onCopyAgentInstructions,
-  onDownloadAnnotations,
-  onPrint,
   onCopyShareLink,
   onOpenImport,
   onSaveToObsidian,
@@ -157,14 +148,6 @@ export const PlanHeaderMenu: React.FC<PlanHeaderMenuProps> = ({
             icon={<SettingsIcon />}
             label="Settings"
           />
-          <ActionMenuItem
-            onClick={() => {
-              closeMenu();
-              onOpenExport();
-            }}
-            icon={<ExportIcon />}
-            label="Export"
-          />
           {agentInstructionsEnabled && (
             <ActionMenuItem
               onClick={() => {
@@ -177,25 +160,7 @@ export const PlanHeaderMenu: React.FC<PlanHeaderMenuProps> = ({
             />
           )}
 
-          <ActionMenuDivider />
-
-          <ActionMenuItem
-            onClick={() => {
-              closeMenu();
-              onDownloadAnnotations();
-            }}
-            icon={<DownloadIcon />}
-            label="Download Annotations"
-          />
-          <ActionMenuItem
-            onClick={() => {
-              closeMenu();
-              onPrint();
-            }}
-            icon={<PrintIcon />}
-            label="Print / Save as PDF"
-            subtitle="Choose 'Save as PDF' in the print dialog"
-          />
+          {sharingEnabled && <ActionMenuDivider />}
           {sharingEnabled && (
             <ActionMenuItem
               onClick={() => {
@@ -262,10 +227,6 @@ export const PlanHeaderMenu: React.FC<PlanHeaderMenuProps> = ({
               )}
             </>
           )}
-
-          <ActionMenuDivider />
-
-          <MenuVersionSection appVersion={appVersion} closeMenu={closeMenu} />
         </>
       )}
     </ActionMenu>
@@ -383,24 +344,6 @@ const SettingsIcon = () => (
   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-  </svg>
-);
-
-const ExportIcon = () => (
-  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-  </svg>
-);
-
-const DownloadIcon = () => (
-  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-  </svg>
-);
-
-const PrintIcon = () => (
-  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
   </svg>
 );
 

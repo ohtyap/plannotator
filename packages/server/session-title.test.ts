@@ -16,7 +16,7 @@ import { NO_BROWSER } from "../../tests/helpers/no-browser";
 const MINIMAL_HTML = "<html><body>Plannotator</body></html>";
 const PATCH = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n";
 const TITLE = "add-refund-flow review";
-const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_AI", "PLANNOTATOR_ANNOTATE_HISTORY", "PLANNOTATOR_BROWSER"] as const;
+const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_ANNOTATE_HISTORY", "PLANNOTATOR_BROWSER"] as const;
 const saved: Record<string, string | undefined> = {};
 let dir: string;
 
@@ -25,7 +25,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "plannotator-session-title-"));
   process.env.PLANNOTATOR_DATA_DIR = join(dir, ".data");
   process.env.PLANNOTATOR_REMOTE = "0";
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_ANNOTATE_HISTORY = "0";
   process.env.PLANNOTATOR_BROWSER = NO_BROWSER;
   delete process.env.PLANNOTATOR_PORT;

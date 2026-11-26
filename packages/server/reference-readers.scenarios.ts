@@ -93,7 +93,7 @@ export function defineReferenceReaderScenarios(runtime: string, start: StartRefe
       "PLANNOTATOR_PORT",
       "PLANNOTATOR_REMOTE",
       "PLANNOTATOR_DATA_DIR",
-      "PLANNOTATOR_AI",
+      "PLANNOTATOR_OPENCODE_URL",
       "PLANNOTATOR_INBOX_CONNECT",
       "PLANNOTATOR_URL_HOST",
       "PLANNOTATOR_PUBLIC_URL",
@@ -122,7 +122,7 @@ export function defineReferenceReaderScenarios(runtime: string, start: StartRefe
     home = join(dir, "home");
     process.env.HOME = home;
     process.env.PLANNOTATOR_DATA_DIR = join(dir, "data");
-    process.env.PLANNOTATOR_AI = "disabled";
+    process.env.PLANNOTATOR_OPENCODE_URL = "";
     process.env.PLANNOTATOR_INBOX_CONNECT = "0";
     process.env.PLANNOTATOR_REMOTE = options.remote ? "1" : "0";
     if (options.codespace) process.env.CODESPACES = "true";

@@ -1,5 +1,6 @@
 import type { Block, Annotation, CodeAnnotation, EditorAnnotation, ImageAttachment } from '../types';
 import { attachedLines } from './attachedLines';
+import { annotationIdentityEnabled } from './annotationIdentityPolicy';
 import { planDenyFeedback } from '@plannotator/core/feedback-templates';
 import { resolveReplyParents } from '@plannotator/core/annotation-threads';
 import { diagramAnchorLocationLine, parseDiagramAnchor } from '@plannotator/core/diagram-anchor';
@@ -1384,9 +1385,9 @@ const renderAnnotationEntries = (
     pushReplies(parent, 0);
     while (stack.length > 0) {
       const { reply, depth } = stack.pop()!;
-      const who = reply.author ? `${reply.author}` : 'reply';
+      const label = annotationIdentityEnabled() ? `Reply (${reply.author || 'reply'})` : 'Reply';
       const indent = '  '.repeat(Math.min(depth, MAX_REPLY_INDENT_DEPTH));
-      parts.push(`${indent}- **Reply (${who}):** ${String(reply.text ?? '').replace(/\r?\n/g, `\n${indent}  `)}\n`);
+      parts.push(`${indent}- **${label}:** ${String(reply.text ?? '').replace(/\r?\n/g, `\n${indent}  `)}\n`);
       if (reply.images && reply.images.length > 0) {
         reply.images.forEach((img: ImageAttachment) => {
           parts.push(`${indent}  - [${img.name}] \`${img.path}\`\n`);

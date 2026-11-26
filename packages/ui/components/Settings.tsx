@@ -12,14 +12,10 @@ import {
   useConfigValue,
   setReviewPanelView,
   setReviewDefaultDiffType,
-  getProviderReviewDefaultDiffType,
-  setProviderReviewDefaultDiffType,
   setReviewAutoViewed,
-  type VcsReviewSettingsDescriptor,
 } from '../config';
 import { setWebMcpToolsEnabled, useWebMcpToolsEnabled } from '../webmcp/preference';
 import { DIAGRAM_SHADOW_OPTIONS } from '../utils/diagramShadow';
-import { markLookAndFeelChoiceResolved } from '../utils/lookAndFeelAnnouncement';
 import { DEFAULT_DOCUMENT_TEXT_SIZE, DOCUMENT_TEXT_SIZE_OPTIONS } from '../utils/documentTextSize';
 import { DOCUMENT_FONT_OPTIONS, documentFontStack } from '../utils/documentFont';
 import {
@@ -33,6 +29,7 @@ import { isFontInstalled } from '../utils/fontDetect';
 import { MAX_FONT_FAMILY_LENGTH, monoFontStack, normalizeCssFontSize, normalizeFontFamilyName } from '../utils/cssFontFamily';
 import { TaterSpritePullup } from './TaterSpritePullup';
 import { getIdentity, regenerateIdentity, setCustomIdentity, isIdentityEditable } from '../utils/identity';
+import { annotationIdentityEnabled } from '../utils/annotationIdentityPolicy';
 import { GitUser } from '../icons/GitUser';
 import {
   getObsidianSettings,
@@ -86,7 +83,6 @@ import {
   PERMISSION_MODE_OPTIONS,
   type PermissionMode,
 } from '../utils/permissionMode';
-import { getAutoCloseDelay, setAutoCloseDelay, AUTO_CLOSE_OPTIONS, type AutoCloseDelay } from '../utils/storage';
 import {
   getDefaultNotesApp,
   saveDefaultNotesApp,
@@ -101,16 +97,11 @@ import { AISettingsTab } from './AISettingsTab';
 import { HooksTab } from './settings/HooksTab';
 import { QuickLabelsTab } from './settings/QuickLabelsTab';
 import { OverlayScrollArea } from './OverlayScrollArea';
-import {
-  getFileBrowserSettings,
-  saveFileBrowserSettings,
-  type FileBrowserSettings,
-} from '../utils/fileBrowser';
 import { requestVimDocumentFocus } from '../hooks/useVimDocumentFocus';
 import { AnalysisLayerToggle } from './AnalysisLayerToggle';
 import { SemanticDiffsTab } from './settings/SemanticDiffsTab';
 
-type SettingsTab = 'general' | 'theme' | 'review' | 'display' | 'semantic' | 'analysis' | 'saving' | 'labels' | 'vim' | 'shortcuts' | 'ai' | 'files' | 'obsidian' | 'bear' | 'octarine' | 'notion' | 'comments' | 'hooks' | 'experimental';
+type SettingsTab = 'general' | 'theme' | 'review' | 'display' | 'semantic' | 'analysis' | 'saving' | 'labels' | 'vim' | 'shortcuts' | 'ai' | 'obsidian' | 'bear' | 'octarine' | 'notion' | 'comments' | 'hooks';
 
 interface SettingsProps {
   taterMode: boolean;
@@ -133,13 +124,6 @@ interface SettingsProps {
    * never wants it offered, passes true.
    */
   hideEnterSavesComment?: boolean;
-  /**
-   * Hide General's "Hide the repository owner" row. Default false: the row
-   * shows. A host that never shows a repository label, or drives the
-   * `hideRepoOwner` setting itself, passes true. (Not `hide` + the setting's
-   * name, which would read `hideHideRepoOwner`.)
-   */
-  hideRepoOwnerSetting?: boolean;
   /**
    * Show Display's Text size row (#2066). Default false: the row does
    * something only where the page applies the `documentTextSize` setting
@@ -164,6 +148,8 @@ interface SettingsProps {
   onExternalClose?: () => void;
   /** Available AI providers (from /api/ai/capabilities). */
   aiProviders?: Array<{ id: string; name: string; capabilities: Record<string, boolean>; models?: Array<{ id: string; label: string; default?: boolean }> }>;
+  /** OpenCode is managed outside the standalone app. */
+  hideAgentSettings?: boolean;
   /** Git user name from `git config user.name`, for quick identity set */
   gitUser?: string;
   /** "Open Plannotator at plannotator.localhost" (#2184, useCookieHostSetting): present
@@ -243,20 +229,6 @@ const DEFAULT_DIFF_TYPE_OPTIONS = [
   { value: 'merge-base' as const, label: 'Committed changes (PR view)', description: "Everything you've committed on this branch" },
   { value: 'all' as const, label: 'All Files (HEAD)', description: "Every tracked file at HEAD, shown as additions" },
 ];
-// Labels match the jj diff picker (getJjContext in packages/shared/jj-core.ts).
-const JJ_DEFAULT_DIFF_TYPE_OPTIONS = [
-  { value: 'jj-current', label: 'Current change', description: 'Only the working-copy change (@)' },
-  { value: 'jj-last', label: 'Last change', description: 'The change just before the working copy (@-)' },
-  { value: 'jj-line', label: 'Line of work', description: 'Every change on your line of work since it left trunk' },
-  { value: 'jj-evolog', label: 'Evolution diff', description: 'How the current change has evolved' },
-  { value: 'jj-all', label: 'Every file', description: 'Every file at the working copy, shown as additions' },
-] as const;
-const JJ_REVIEW_DEFAULTS: VcsReviewSettingsDescriptor = {
-  id: 'jj',
-  label: 'Jujutsu',
-  defaultDiffType: 'jj-current',
-  diffOptions: JJ_DEFAULT_DIFF_TYPE_OPTIONS.map(({ value, label, description }) => ({ id: value, label, description })),
-};
 const AGENT_TERMINAL_SIDE_OPTIONS: { value: AnnotateAgentTerminalSide; label: string }[] = [
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' },
@@ -587,17 +559,12 @@ const REVIEW_SECTION_HEADING = 'text-xs font-semibold uppercase tracking-wider t
 
 const ReviewTab: React.FC<{ sinceBaseUnavailable?: boolean }> = ({ sinceBaseUnavailable }) => {
   const defaultDiffType = useConfigValue('defaultDiffType');
-  useConfigValue('reviewDefaults');
-  const jjDefaultDiffType = getProviderReviewDefaultDiffType(JJ_REVIEW_DEFAULTS);
   const reviewPanelView = useConfigValue('reviewPanelView');
   const reviewAutoViewed = useConfigValue('reviewAutoViewed');
   return (
     <div className="space-y-5">
       <div className="space-y-2">
         <div className={REVIEW_SECTION_HEADING}>Viewed files</div>
-        {/* Never write `reviewAutoViewed` directly — setReviewAutoViewed also
-            consumes the first-time notice, since an explicit toggle is proof
-            the reviewer already found the switch. */}
         <ToggleSwitch
           checked={reviewAutoViewed}
           onChange={(v) => setReviewAutoViewed(v)}
@@ -652,24 +619,6 @@ const ReviewTab: React.FC<{ sinceBaseUnavailable?: boolean }> = ({ sinceBaseUnav
         </div>
       </section>
 
-      <div className="border-t border-border" />
-
-      <section className="space-y-4" aria-labelledby="settings-review-jj">
-        <div id="settings-review-jj" className={REVIEW_SECTION_HEADING}>Jujutsu</div>
-        <div className="space-y-2">
-          <div>
-            <div className="text-sm font-medium">Default diff view</div>
-            <div className="text-xs text-muted-foreground">Which changes to show when you open a review in a Jujutsu repository</div>
-          </div>
-          {/* Its own saved value: Git modes mean nothing in a jj repo, and jj has
-              no Git status view, so nothing here is coupled to the Git half. */}
-          <DefaultDiffChoices
-            options={JJ_DEFAULT_DIFF_TYPE_OPTIONS}
-            value={jjDefaultDiffType}
-            onChange={(value) => setProviderReviewDefaultDiffType('jj', value)}
-          />
-        </div>
-      </section>
     </div>
   );
 };
@@ -829,29 +778,6 @@ const FontFamilyField: React.FC<{
           {previewText}
         </div>
       )}
-    </div>
-  );
-};
-
-/**
- * Experimental (the owner, 2026-10-27: "its own page on settings", the last
- * tab): each experimental setting, off by default. Today one, code review's
- * Edit Code to Suggest (`editSuggestions`, the
- * `plannotator-experimental-edit-suggestions` cookie, unchanged).
- */
-const ExperimentalTab: React.FC = () => {
-  const editSuggestions = useConfigValue('editSuggestions');
-  return (
-    <div className="space-y-3" data-settings-experimental="">
-      <div className="text-xs text-muted-foreground">
-        Features still being tried. Each stays off until you turn it on.
-      </div>
-      <ToggleSwitch
-        checked={editSuggestions}
-        onChange={(v) => configStore.set('editSuggestions', v)}
-        label="Edit Code to Suggest"
-        description="Edit a file in place in the all-files view; your net change becomes a suggestion comment. Files are never written from the browser. Uses an experimental upstream editor."
-      />
     </div>
   );
 };
@@ -1179,7 +1105,7 @@ const CommentsTab: React.FC = () => {
   );
 };
 
-export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, localSaveOnly = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], gitUser, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, hideRepoOwnerSetting = false, showDocumentTextSize = false, showDocumentFont = false }) => {
+export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange, onIdentityChange, origin, mode = 'plan', annotateParity = false, localSaveOnly = false, onUIPreferencesChange, onPermissionModeChange, externalOpen, externalTab, onExternalClose, aiProviders = [], hideAgentSettings = false, gitUser, cookieHostSetting, packageChangesSetting, agentToolSetting, onAgentToolChange, sinceBaseUnavailable, isCompactTouchLayout = false, onDetectObsidianVaults, agentTerminalAvailable = false, webmcpAvailable = false, hideEnterSavesComment = false, showDocumentTextSize = false, showDocumentFont = false }) => {
   const webmcpTools = useWebMcpToolsEnabled();
   const [showDialog, setShowDialog] = useState(false);
   const settingsWasOpenRef = useRef(false);
@@ -1215,7 +1141,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
   const documentSourceLineNumbers = useConfigValue('documentSourceLineNumbers');
   const vimModeEnabled = useConfigValue('vimModeEnabled');
   const enterSavesComment = useConfigValue('enterSavesComment');
-  const hideRepoOwner = useConfigValue('hideRepoOwner');
   const vimHudEnabled = useConfigValue('vimHudEnabled');
   const vimHudKeyPanelEnabled = useConfigValue('vimHudKeyPanelEnabled');
   const agentTerminalSide = useConfigValue('agentTerminalSide');
@@ -1243,14 +1168,11 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
   const [uiPrefs, setUiPrefs] = useState<UIPreferences>({ tocEnabled: true, stickyActionsEnabled: true, planWidth: 'compact' });
   const [permissionMode, setPermissionMode] = useState<PermissionMode>('bypassPermissions');
   const [agentWarning, setAgentWarning] = useState<string | null>(null);
-  const [autoCloseDelay, setAutoCloseDelayState] = useState<AutoCloseDelay>('off');
   const [defaultNotesApp, setDefaultNotesApp] = useState<DefaultNotesApp>('ask');
   const [aiProvider, setAiProvider] = useState<string | null>(null);
-  const [fileBrowserSettings, setFileBrowserSettings] = useState<FileBrowserSettings>({ enabled: false, directories: [] });
-  const [newDirPath, setNewDirPath] = useState('');
 
   // Fetch available agents for OpenCode
-  const { agents: availableAgents, validateAgent, getAgentWarning } = useAgents(origin ?? null, agentSurface);
+  const { agents: availableAgents, validateAgent, getAgentWarning } = useAgents(hideAgentSettings ? null : origin ?? null, agentSurface);
 
   const mainTabs = useMemo(() => {
     const t: { id: SettingsTab; label: string }[] = [{ id: 'general', label: 'General' }];
@@ -1261,7 +1183,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
     // post-approval permission mode / agent switch) stay plan-only.
     if (mode === 'plan' || annotateDocumentTabs) {
       t.push({ id: 'display', label: 'Display' });
-      t.push({ id: 'saving', label: 'Saving' });
+      if (!localSaveOnly || mode === 'plan') t.push({ id: 'saving', label: 'Saving' });
       t.push({ id: 'labels', label: 'Labels' });
     }
     if (mode === 'review') {
@@ -1270,7 +1192,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
       t.push({ id: 'semantic', label: 'Semantic diffs' });
       t.push({ id: 'analysis', label: 'Analysis' });
       t.push({ id: 'comments', label: 'Comments' });
-      if (aiProviders.length > 0) {
+      if (!hideAgentSettings && aiProviders.length > 0) {
         t.push({ id: 'ai', label: 'AI' });
       }
     }
@@ -1278,21 +1200,17 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
       t.push({ id: 'vim', label: 'Vim' });
     }
     t.push({ id: 'shortcuts', label: 'Shortcuts' });
-    if (mode === 'plan') {
+    if (!hideAgentSettings && mode === 'plan') {
       t.push({ id: 'hooks', label: 'Hooks' });
     }
     return t;
-  }, [mode, annotateDocumentTabs, aiProviders.length]);
+  }, [mode, annotateDocumentTabs, aiProviders.length, hideAgentSettings, localSaveOnly]);
 
   const integrationTabs: { id: SettingsTab; label: string }[] = [
-    { id: 'files', label: 'Files' },
     ...(!localSaveOnly && (mode === 'plan' || annotateDocumentTabs)
       ? [{ id: 'obsidian' as SettingsTab, label: 'Obsidian' }, { id: 'bear' as SettingsTab, label: 'Bear' }, { id: 'octarine' as SettingsTab, label: 'Octarine' }, ...(isNotionAvailable() ? [{ id: 'notion' as SettingsTab, label: 'Notion' }] : [])]
       : []),
   ];
-  // Experimental is the last tab, on its own below the integrations (the owner,
-  // 2026-10-27). Only where it has a setting: code review's Edit Code to Suggest.
-  const experimentalTabs: { id: SettingsTab; label: string }[] = mode === 'review' ? [{ id: 'experimental', label: 'Experimental' }] : [];
   const obsidianDefaultSaveAvailable = obsidian.enabled && getEffectiveVaultPath(obsidian).trim().length > 0;
   const bearDefaultSaveAvailable = bear.enabled;
   const octarineDefaultSaveAvailable = octarine.enabled && octarine.workspace.trim().length > 0;
@@ -1309,34 +1227,29 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
   useEffect(() => {
     if (showDialog) {
-      setIdentity(getIdentity())
+      if (annotationIdentityEnabled()) setIdentity(getIdentity());
       setObsidian(getObsidianSettings());
       setBear(getBearSettings());
       setOctarine(getOctarineSettings());
       setNotion(getNotionSettings());
-      setAgent(getAgentSwitchSettings(agentSurface));
       setPlanSave(getPlanSaveSettings());
       setUiPrefs(getUIPreferences());
-      setPermissionMode(getPermissionModeSettings().mode);
-      setAutoCloseDelayState(getAutoCloseDelay());
-      setDefaultNotesApp(getDefaultNotesApp());
-      const aiSettings = getAIProviderSettings();
-      setAiProvider(resolveAIProviderSelection({ providers: aiProviders, origin, settings: aiSettings }).providerId);
-      setFileBrowserSettings(getFileBrowserSettings());
-
-      // Validate agent setting when dialog opens
-      if (origin === 'opencode') {
-        setAgentWarning(getAgentWarning());
+      if (!localSaveOnly) setDefaultNotesApp(getDefaultNotesApp());
+      if (!hideAgentSettings) {
+        setAgent(getAgentSwitchSettings(agentSurface));
+        setPermissionMode(getPermissionModeSettings().mode);
+        const aiSettings = getAIProviderSettings();
+        setAiProvider(resolveAIProviderSelection({ providers: aiProviders, origin, settings: aiSettings }).providerId);
+        if (origin === 'opencode') setAgentWarning(getAgentWarning());
       }
     }
-  }, [showDialog, availableAgents, origin, getAgentWarning, aiProviders.length]);
+  }, [showDialog, availableAgents, origin, getAgentWarning, aiProviders.length, hideAgentSettings, localSaveOnly]);
 
   useEffect(() => {
-    if (!showDialog) return;
+    if (!showDialog || localSaveOnly) return;
 
     const defaultSaveAvailable =
       defaultNotesApp === 'ask' ||
-      defaultNotesApp === 'download' ||
       (defaultNotesApp === 'obsidian' && obsidianDefaultSaveAvailable) ||
       (defaultNotesApp === 'bear' && bearDefaultSaveAvailable) ||
       (defaultNotesApp === 'octarine' && octarineDefaultSaveAvailable) ||
@@ -1349,6 +1262,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
     }
   }, [
     showDialog,
+    localSaveOnly,
     defaultNotesApp,
     obsidianDefaultSaveAvailable,
     bearDefaultSaveAvailable,
@@ -1374,23 +1288,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
         .finally(() => setVaultsLoading(false));
     }
   }, [obsidian.enabled, localSaveOnly]);
-
-  const handleFileBrowserChange = (updates: Partial<FileBrowserSettings>) => {
-    const newSettings = { ...fileBrowserSettings, ...updates };
-    setFileBrowserSettings(newSettings);
-    saveFileBrowserSettings(newSettings);
-    if (onUIPreferencesChange) onUIPreferencesChange({ ...uiPrefs });
-  };
-
-  const addDirectory = () => {
-    const trimmed = newDirPath.trim();
-    if (trimmed && !fileBrowserSettings.directories.includes(trimmed)) {
-      handleFileBrowserChange({
-        directories: [...fileBrowserSettings.directories, trimmed],
-      });
-    }
-    setNewDirPath('');
-  };
 
   const handleObsidianChange = (updates: Partial<ObsidianSettings>) => {
     const newSettings = { ...obsidian, ...updates };
@@ -1524,7 +1421,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
             <div className="flex flex-col md:flex-row md:min-h-[420px] flex-1 min-h-0 overflow-hidden">
               {/* Mobile: horizontal tab bar */}
               <nav className="md:hidden flex overflow-x-auto border-b border-border px-2 py-1.5 gap-1 flex-shrink-0">
-                {[...mainTabs, ...integrationTabs, ...experimentalTabs].map(tab => (
+                {[...mainTabs, ...integrationTabs].map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
@@ -1579,26 +1476,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                     </div>
                   </>
                 )}
-                {experimentalTabs.length > 0 && (
-                  <>
-                    <div className="mx-2 my-2 border-t border-border/50" />
-                    <div className="space-y-0.5">
-                      {experimentalTabs.map(tab => (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
-                            activeTab === tab.id
-                              ? 'bg-primary/10 text-primary font-medium'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                          }`}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
               </nav>
 
               {/* Content — scrollable */}
@@ -1608,8 +1485,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                 {/* === GENERAL TAB === */}
                 {activeTab === 'general' && (
                   <>
-                    {/* Identity */}
-                    <div className="space-y-2">
+                    {annotationIdentityEnabled() && <div className="space-y-2">
                       <div className="text-sm font-medium">Your Identity</div>
                       <div className="text-xs text-muted-foreground">
                         Used when sharing annotations with others
@@ -1658,7 +1534,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                           </button>
                         )}
                       </div>
-                    </div>
+                    </div>}
 
                     {/* Enter saves a comment (#1934): opt-in, cookie-only.
                         Governs every comment composer; never the decision keys. */}
@@ -1671,22 +1547,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                             onChange={(v) => configStore.set('enterSavesComment', v)}
                             label="Enter saves a comment"
                             description={`Shift+Enter adds a new line. ${modKeyWord}+Enter still saves.`}
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {/* Hide the repository owner: opt-in, cookie-only. On names
-                        the repository alone (utils/repoLabel). */}
-                    {!hideRepoOwnerSetting && (
-                      <>
-                        <div className="border-t border-border" />
-                        <div data-repo-owner-setting="true">
-                          <ToggleSwitch
-                            checked={hideRepoOwner}
-                            onChange={(v) => configStore.set('hideRepoOwner', v)}
-                            label="Hide the repository owner"
-                            description="When on, documents, code review and tab titles name the repository without its owner. Hover the name to see the owner."
                           />
                         </div>
                       </>
@@ -1718,7 +1578,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         server reports a tool host (Claude Code mod, Pi,
                         OpenCode 2). Writes agentTool to config.json; applies
                         to the next session. */}
-                    {agentToolSetting && onAgentToolChange && (
+                    {!hideAgentSettings && agentToolSetting && onAgentToolChange && (
                       <>
                         <div className="border-t border-border" />
                         <AgentToolSettingRow setting={agentToolSetting} onChange={onAgentToolChange} />
@@ -1729,7 +1589,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         exposes document.modelContext; off unregisters the
                         tools for this browser. Cookie-only and idle at its
                         default: no cookie exists until the user opts out. */}
-                    {webmcpAvailable && (
+                    {!hideAgentSettings && webmcpAvailable && (
                       <>
                         <div className="border-t border-border" />
                         <div className="flex items-center justify-between" data-webmcp-setting="true">
@@ -1759,7 +1619,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                     )}
 
                     {/* Permission Mode (Claude Code only) */}
-                    {origin === 'claude-code' && mode === 'plan' && (
+                    {!hideAgentSettings && origin === 'claude-code' && mode === 'plan' && (
                       <>
                         <div className="border-t border-border" />
                         <div className="space-y-2">
@@ -1789,7 +1649,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
                     {/* Agent Switching (OpenCode only). Applied on plan
                         approval only; annotate decisions never switch agents. */}
-                    {origin === 'opencode' && !annotateDocumentTabs && (
+                    {!hideAgentSettings && origin === 'opencode' && !annotateDocumentTabs && (
                       <>
                         <div className="border-t border-border" />
                         <div className="space-y-2">
@@ -1881,7 +1741,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         terminal actually being available in this session, so a
                         remote or runtime-less annotate never offers a dead
                         control. */}
-                    {mode === 'annotate' && agentTerminalAvailable && (
+                    {!hideAgentSettings && mode === 'annotate' && agentTerminalAvailable && (
                       <>
                         <div className="border-t border-border" />
                         <div className="space-y-2">
@@ -1904,31 +1764,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         </div>
                       </>
                     )}
-
-                    <div className="border-t border-border" />
-
-                    {/* Auto-close Tab */}
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Auto-close Tab</div>
-                      <select
-                        value={autoCloseDelay}
-                        onChange={(e) => {
-                          const next = e.target.value as AutoCloseDelay;
-                          setAutoCloseDelayState(next);
-                          setAutoCloseDelay(next);
-                        }}
-                        className="w-full px-3 py-2 bg-muted rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
-                      >
-                        {AUTO_CLOSE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="text-[10px] text-muted-foreground/70">
-                        {AUTO_CLOSE_OPTIONS.find(o => o.value === autoCloseDelay)?.description}
-                      </div>
-                    </div>
                   </>
                 )}
 
@@ -1947,7 +1782,6 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
 
                 {activeTab === 'semantic' && mode === 'review' && <SemanticDiffsTab />}
 
-                {activeTab === 'experimental' && mode === 'review' && <ExperimentalTab />}
 
                 {activeTab === 'analysis' && mode === 'review' && (
                   <ReviewAnalysisTab packageChangesSetting={packageChangesSetting} />
@@ -2093,11 +1927,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         <div className="text-xs text-muted-foreground">Show the plan as a floating card on a grid</div>
                       </div>
                       <button role="switch" aria-checked={gridEnabled} aria-label="Grid Background"
-                        onClick={() => {
-                          configStore.set('gridEnabled', !gridEnabled);
-                          // A Settings flip is a real choice: keep it across reloads.
-                          markLookAndFeelChoiceResolved();
-                        }}
+                        onClick={() => configStore.set('gridEnabled', !gridEnabled)}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${gridEnabled ? 'bg-primary' : 'bg-muted'}`}>
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${gridEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                       </button>
@@ -2306,9 +2136,9 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                       )}
                     </div>
 
-                    <div className="border-t border-border" />
                     </>)}
 
+                    {!localSaveOnly && <>
                     {/* Default Notes App */}
                     <div className="space-y-2">
                       <div>
@@ -2318,31 +2148,25 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                         </div>
                       </div>
                       <select
-                        value={localSaveOnly && defaultNotesApp !== 'download' ? 'ask' : defaultNotesApp}
+                        value={defaultNotesApp}
                         onChange={(e) => handleDefaultNotesAppChange(e.target.value as DefaultNotesApp)}
                         className="w-full px-3 py-2 bg-muted rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
                       >
                         <option value="ask">Ask each time</option>
-                        <option value="download">Download Annotations</option>
-                        {!localSaveOnly && obsidianDefaultSaveAvailable && <option value="obsidian">Obsidian</option>}
-                        {!localSaveOnly && bearDefaultSaveAvailable && <option value="bear">Bear</option>}
-                        {!localSaveOnly && octarineDefaultSaveAvailable && <option value="octarine">Octarine</option>}
-                        {!localSaveOnly && (notionDefaultSaveAvailable || defaultNotesApp === 'notion') && <option value="notion">Notion</option>}
+                        {obsidianDefaultSaveAvailable && <option value="obsidian">Obsidian</option>}
+                        {bearDefaultSaveAvailable && <option value="bear">Bear</option>}
+                        {octarineDefaultSaveAvailable && <option value="octarine">Octarine</option>}
+                        {(notionDefaultSaveAvailable || defaultNotesApp === 'notion') && <option value="notion">Notion</option>}
                       </select>
                       <div className="text-[10px] text-muted-foreground/70">
-                        {localSaveOnly && defaultNotesApp !== 'download'
-                          ? 'Opens the annotation export dialog'
-                          : defaultNotesApp === 'ask'
+                        {defaultNotesApp === 'ask'
                           ? 'Opens Export dialog with Notes tab'
-                          : defaultNotesApp === 'download'
-                            ? `${modKey}+S downloads the annotations file`
-                            : `${modKey}+S saves directly to ${{ obsidian: 'Obsidian', bear: 'Bear', octarine: 'Octarine', notion: 'Notion' }[defaultNotesApp] ?? defaultNotesApp}`}
+                          : `${modKey}+S saves directly to ${{ obsidian: 'Obsidian', bear: 'Bear', octarine: 'Octarine', notion: 'Notion' }[defaultNotesApp]}`}
                       </div>
                     </div>
 
                     <div className="border-t border-border" />
 
-                    {!localSaveOnly && <>
                     {/* Integration links */}
                     <div className="space-y-2">
                       <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
@@ -2422,7 +2246,7 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                 )}
 
                 {/* === AI TAB === */}
-                {activeTab === 'ai' && (
+                {!hideAgentSettings && activeTab === 'ai' && (
                   <AISettingsTab
                     providers={aiProviders}
                     selectedProviderId={aiProvider}
@@ -2431,94 +2255,8 @@ export const Settings: React.FC<SettingsProps> = ({ taterMode, onTaterModeChange
                   />
                 )}
 
-                {/* === FILES TAB === */}
-                {activeTab === 'files' && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-medium">File Browser</div>
-                        <div className="text-xs text-muted-foreground">
-                          Your project files are shown automatically. Add extra directories below.
-                        </div>
-                      </div>
-                      <button
-                        role="switch"
-                        aria-checked={fileBrowserSettings.enabled}
-                        onClick={() => handleFileBrowserChange({ enabled: !fileBrowserSettings.enabled })}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          fileBrowserSettings.enabled ? 'bg-primary' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                            fileBrowserSettings.enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {fileBrowserSettings.enabled && (
-                      <>
-                        <div className="border-t border-border" />
-
-                        {/* Directory list */}
-                        {fileBrowserSettings.directories.length > 0 && (
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">Directories</label>
-                            {fileBrowserSettings.directories.map((dir) => (
-                              <div key={dir} className="flex items-center gap-2 group">
-                                <div className="flex-1 px-3 py-2 bg-muted rounded-lg text-xs font-mono truncate" title={dir}>
-                                  {dir}
-                                </div>
-                                <button
-                                  onClick={() => handleFileBrowserChange({
-                                    directories: fileBrowserSettings.directories.filter((d) => d !== dir),
-                                  })}
-                                  className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-                                  title="Remove directory"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Add directory */}
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-muted-foreground">Add Directory</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={newDirPath}
-                              onChange={(e) => setNewDirPath(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') addDirectory();
-                              }}
-                              placeholder="/path/to/directory"
-                              className="flex-1 px-3 py-2 bg-muted rounded-lg text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                            />
-                            <button
-                              onClick={addDirectory}
-                              disabled={!newDirPath.trim()}
-                              className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground/70">
-                            Add directories outside your project that contain markdown files.
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-
                 {/* === HOOKS TAB === */}
-                {activeTab === 'hooks' && <HooksTab />}
+                {!hideAgentSettings && activeTab === 'hooks' && <HooksTab />}
 
                 {/* === OBSIDIAN TAB === */}
                 {activeTab === 'obsidian' && (

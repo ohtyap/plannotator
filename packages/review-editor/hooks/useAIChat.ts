@@ -86,8 +86,9 @@ export function useAIChat({
       // nulls sessionId but keeps messages, so a string-only diff would miss it)
       // or when the viewed changeset itself changed.
       const freshSession = !chat.sessionId;
-      const changed = freshSession || (ctx ?? '') !== (lastSentContextRef.current ?? '');
-      const contextPreamble = buildReviewContextPreamble(ctx, { changed });
+      // A new OpenCode session already gets the patch in its initial context.
+      const changed = (ctx ?? '') !== (lastSentContextRef.current ?? '');
+      const contextPreamble = freshSession ? undefined : buildReviewContextPreamble(ctx, { changed });
       lastSentContextRef.current = ctx;
       return chat.ask({ viewing: viewingRef.current, contextPreamble, ...params });
     },

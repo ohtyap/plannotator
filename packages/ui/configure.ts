@@ -3,6 +3,7 @@ import { setDocPreviewFetcher, type DocPreviewFetcher, type DocPreviewResult } f
 import { setStorageBackend, type StorageBackend } from './utils/storage';
 import { setUploadTransport, type UploadTransport, type UploadResult } from './utils/upload';
 import { setIdentityProvider, type IdentityProvider } from './utils/identity';
+import { setAnnotationIdentityEnabled } from './utils/annotationIdentityPolicy';
 import { setFileTreeBackend, type FileTreeBackend } from './hooks/useFileBrowser';
 import { setDraftTransport, type DraftTransport } from './hooks/useAnnotationDraft';
 import { setExternalAnnotationTransport, type ExternalAnnotationTransport } from './hooks/useExternalAnnotations';
@@ -66,6 +67,8 @@ export interface PlannotatorUIConfig {
   docPreviewFetcher?: DocPreviewFetcher;
   fileTreeBackend?: FileTreeBackend;
   identityProvider?: IdentityProvider;
+  /** Set false for single-user apps: don't store, stamp, or display annotation authors. */
+  annotationIdentity?: boolean;
   draftTransport?: DraftTransport;
   /**
    * Base-constraint transport. If your annotation type extends the base
@@ -254,6 +257,7 @@ export function configurePlannotatorUI(config: PlannotatorUIConfig): void {
   if (config.docPreviewFetcher) setDocPreviewFetcher(config.docPreviewFetcher);
   if (config.fileTreeBackend) setFileTreeBackend(config.fileTreeBackend);
   if (config.identityProvider) setIdentityProvider(config.identityProvider);
+  if (config.annotationIdentity !== undefined) setAnnotationIdentityEnabled(config.annotationIdentity);
   if (config.draftTransport) setDraftTransport(config.draftTransport);
   if (config.externalAnnotationTransport) setExternalAnnotationTransport(config.externalAnnotationTransport);
   if (config.aiTransport) setAITransport(config.aiTransport);

@@ -88,13 +88,3 @@ export async function getRepoInfo(cwd = process.cwd()): Promise<RepoInfo | null>
 
 	return null;
 }
-
-/**
- * Repository info for a source on disk: the repo holding `sourceDir`, even one
- * without a remote. A folder outside any repo, or no source at all, keeps the
- * repo the session started from, so `#123` links still work there.
- */
-export async function getSourceRepoInfo(sourceDir?: string): Promise<RepoInfo | null> {
-	const sourceInfo = sourceDir ? await getGitRepoInfo(sourceDir) : null;
-	return sourceInfo ?? getRepoInfo();
-}

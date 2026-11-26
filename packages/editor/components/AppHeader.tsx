@@ -65,6 +65,7 @@ interface AppHeaderProps {
    *  its full path or URL in a tooltip. Desktop only, and not drawn beside
    *  a `bundleSwitcher`, which already names the open file. */
   documentName?: { name: string; title?: string; cutsFromStart?: boolean };
+  onChooseFile?: () => void;
   // Mode flags (stable after mount)
   isApiMode: boolean;
   annotateMode: boolean;
@@ -119,7 +120,6 @@ interface AppHeaderProps {
   // Settings props
   taterMode: boolean;
   mobileSettingsOpen: boolean;
-  gitUser: string | undefined;
   /** "Open Plannotator at plannotator.localhost" (#2184); Settings shows its row when present. */
   cookieHostSetting?: CookieHostSetting;
   /** The `plannotator` agent tool switch (parseAgentToolSetting of serverConfig); Settings shows its row. */
@@ -147,16 +147,12 @@ interface AppHeaderProps {
   onArchiveCopy: () => void;
   onArchiveDone: () => void;
   onTaterModeChange: (enabled: boolean) => void;
-  onIdentityChange: (oldId: string, newId: string) => void;
   onUIPreferencesChange: (prefs: UIPreferences) => void;
   /** Settings changed Claude Code's permission mode (plan review). */
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
-  onOpenExport: () => void;
   onCopyAgentInstructions: () => void;
-  onDownloadAnnotations: () => void;
-  onPrint: () => void;
   onCopyShareLink: () => void;
   onOpenImport: () => void;
   onSaveToObsidian: () => void;
@@ -165,7 +161,6 @@ interface AppHeaderProps {
   onSaveToNotion?: () => void;
 
   // PlanHeaderMenu config
-  appVersion: string;
   agentInstructionsEnabled: boolean;
   obsidianConfigured: boolean;
   bearConfigured: boolean;
@@ -194,6 +189,7 @@ export const AppHeader = React.memo<AppHeaderProps>(({
   compactDocumentActions,
   bundleSwitcher,
   documentName,
+  onChooseFile,
   isApiMode,
   annotateMode,
   archiveMode,
@@ -220,7 +216,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
   callbackConfig,
   taterMode,
   mobileSettingsOpen,
-  gitUser,
   cookieHostSetting,
   agentToolSetting,
   onAgentToolChange,
@@ -238,22 +233,17 @@ export const AppHeader = React.memo<AppHeaderProps>(({
   onArchiveCopy,
   onArchiveDone,
   onTaterModeChange,
-  onIdentityChange,
   onUIPreferencesChange,
   onPermissionModeChange,
   onOpenSettings,
   onCloseSettings,
-  onOpenExport,
   onCopyAgentInstructions,
-  onDownloadAnnotations,
-  onPrint,
   onCopyShareLink,
   onOpenImport,
   onSaveToObsidian,
   onSaveToBear,
   onSaveToOctarine,
   onSaveToNotion,
-  appVersion,
   agentInstructionsEnabled,
   obsidianConfigured,
   bearConfigured,
@@ -277,7 +267,6 @@ export const AppHeader = React.memo<AppHeaderProps>(({
           )
         ) : (
           <>
-            <AppHeaderLogo />
             {bundleSwitcher ? (
               <BundleSwitcher {...bundleSwitcher} />
             ) : documentName ? (
@@ -298,6 +287,24 @@ export const AppHeader = React.memo<AppHeaderProps>(({
       )}
 
       <div className={`flex items-center gap-1 md:gap-2 ${compactTouchLayout ? 'justify-end' : 'shrink-0'}`}>
+        {onChooseFile && (
+          <button
+            type="button"
+            aria-label="Choose a file"
+            aria-haspopup="dialog"
+            title="Choose a file"
+            onClick={onChooseFile}
+            className={`inline-flex items-center gap-1 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground ${
+              compactTouchLayout ? 'h-11 w-11 justify-center' : 'min-h-8 px-2'
+            }`}
+            data-pn-touch-target
+          >
+            <svg aria-hidden="true" className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+            {!compactTouchLayout && <span>Choose file</span>}
+          </button>
+        )}
         {/* Bot callback buttons — only shown when ?cb=&ct= params are present */}
         {!compactTouchLayout && callbackConfig && !isApiMode && isSharedSession && (
           <>
@@ -487,16 +494,15 @@ export const AppHeader = React.memo<AppHeaderProps>(({
           <Settings
             taterMode={taterMode}
             onTaterModeChange={onTaterModeChange}
-            onIdentityChange={onIdentityChange}
             origin={origin}
             mode={annotateMode ? 'annotate' : 'plan'}
             annotateParity
             localSaveOnly
+            hideAgentSettings
             onUIPreferencesChange={onUIPreferencesChange}
             onPermissionModeChange={onPermissionModeChange}
             externalOpen={mobileSettingsOpen}
             onExternalClose={onCloseSettings}
-            gitUser={gitUser}
             cookieHostSetting={cookieHostSetting}
             agentToolSetting={agentToolSetting}
             onAgentToolChange={onAgentToolChange}
@@ -508,12 +514,8 @@ export const AppHeader = React.memo<AppHeaderProps>(({
         </div>
 
         <PlanHeaderMenu
-          appVersion={appVersion}
           onOpenSettings={onOpenSettings}
-          onOpenExport={onOpenExport}
           onCopyAgentInstructions={onCopyAgentInstructions}
-          onDownloadAnnotations={onDownloadAnnotations}
-          onPrint={onPrint}
           onCopyShareLink={onCopyShareLink}
           onOpenImport={onOpenImport}
           onSaveToObsidian={onSaveToObsidian}
@@ -603,16 +605,3 @@ const HeaderDocumentName: React.FC<{ name: string; title?: string; cutsFromStart
     </div>
   );
 };
-
-const AppHeaderLogo = () => (
-  <div className="flex items-center gap-2 md:gap-3">
-    <a
-      href="https://plannotator.ai"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-1.5 md:gap-2 hover:opacity-80 transition-opacity"
-    >
-      <span className="text-sm font-semibold tracking-tight">Plannotator</span>
-    </a>
-  </div>
-);

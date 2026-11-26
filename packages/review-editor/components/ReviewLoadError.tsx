@@ -25,7 +25,7 @@ export interface ReviewLoadErrorProps {
   /** `/api/exit?client=…&`, the App's own URL (ends with `&` or `?`). */
   exitUrl: string;
   /** The agent switch a normal decision sends (OpenCode), read when sending. */
-  getAgentSwitch: () => string | undefined;
+  getAgentSwitch?: () => string | undefined;
 }
 
 type Outcome = 'feedback' | 'exited';
@@ -52,7 +52,7 @@ export const ReviewLoadError: React.FC<ReviewLoadErrorProps> = ({ failure, retry
     try {
       let res: Response;
       if (kind === 'feedback') {
-        const agentSwitch = getAgentSwitch();
+        const agentSwitch = getAgentSwitch?.();
         res = await fetch(feedbackUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

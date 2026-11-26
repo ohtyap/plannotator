@@ -4,6 +4,8 @@ Review local code changes or annotate documents in your browser. This fork of
 [Plannotator](https://github.com/backnotprop/plannotator) ships a standalone
 `plannotator` executable, not agent plugins or an Inbox.
 
+The standalone UI is single-user: annotations have no reviewer name.
+
 ## Download for Linux
 
 Pick a version from [GitHub Releases](https://github.com/ohtyap/plannotator/releases) to pin the download. For example, on Linux ARM64:
@@ -52,9 +54,13 @@ The browser shows the diff and lets you annotate and submit feedback. For a
 pull request, check out the branch yourself, then run `plannotator review`
 there. The CLI does not fetch PRs or post to a forge.
 
-When a supported AI engine is configured, the UI can start **Review agent**
-and **Guided Review** runs and open a separate **Ask AI** chat. No agent
-integration is required for manual review or annotation.
+**Review Agent**, **Guided Review**, and **Ask AI** use an existing OpenCode V2
+service. The launcher can set `PLANNOTATOR_OPENCODE_URL` and, for an authenticated
+service, `OPENCODE_PASSWORD`. With only `OPENCODE_PASSWORD` set, Plannotator uses
+the managed loopback endpoint at `http://127.0.0.1:49375`. OpenCode supplies
+the model defaults; Plannotator never starts a service or offers an agent
+picker. AI actions appear only when Plannotator connects to OpenCode V2 at
+launch. Manual review and annotation still work without OpenCode.
 
 ## Annotate
 
@@ -65,6 +71,12 @@ plannotator annotate ./docs
 plannotator annotate http://localhost:5173  # annotate a running local web app
 plannotator annotate https://example.com    # fetch and annotate a snapshot
 ```
+
+When annotating a directory, use **Choose a file** to open a document. For
+explicit file bundles, use the file switcher.
+
+Review and Annotate attempt to close the tab three seconds after the completion
+screen appears. If the browser blocks it, close the tab manually.
 
 Use `--browser none` to print the session URL without opening a tab. Decisions
 are returned to the terminal; add `--json` for scripts. For an annotate approval

@@ -16,8 +16,7 @@
  * server with (`PLANNOTATOR_SESSION_BRIDGE_TOKEN`). Without a token the paths
  * answer 404 with `code: "host_control_disabled"`, which a host reads as
  * "turned off" (an uncoded 404 is "an older Plannotator"). Available wherever
- * the host launched the server with that token, including under
- * `PLANNOTATOR_AI=disabled` (which turns the pull bridge itself off); never in
+ * the host launched the server with that token, independent of AI; never in
  * remote mode or a `--tailscale` session (which discards the token).
  *
  * Privacy: status carries counts, never comment text.

@@ -5,7 +5,6 @@
  * Runtime-agnostic: uses only node:fs, node:os, node:child_process.
  */
 
-import { childEnv } from "./child-env";
 import { isAbsolute, join, resolve } from "path";
 import { getPlannotatorDataDir } from "./data-dir";
 import {
@@ -23,7 +22,6 @@ import {
   renameSync,
   realpathSync,
 } from "fs";
-import { execSync } from "child_process";
 
 import type { DefaultDiffType, DiffLineBgIntensity, DiffOptions, JjDefaultDiffType, ReviewDefaults, ThemeConfig } from '@plannotator/core/config-types';
 import { isFaviconStyle, type FaviconStyle } from './favicon';
@@ -167,6 +165,7 @@ function mergeInboxPromptConfig(current: unknown, partial: unknown): PromptConfi
 }
 
 export interface PlannotatorConfig {
+  /** Legacy field retained when saving other settings; not used by the standalone apps. */
   displayName?: string;
   diffOptions?: DiffOptions;
   /** Saved review defaults for a VCS other than Git (today: `jj`). Unknown keys are kept. */
@@ -1585,35 +1584,18 @@ export function saveConfig(partial: Partial<PlannotatorConfig>): boolean {
 }
 
 /**
- * Detect the git user name from `git config user.name`.
- * Returns null if git is unavailable, not in a repo, or user.name is not set.
- */
-export function detectGitUser(cwd?: string): string | null {
-  try {
-    const name = execSync("git config user.name", { cwd, env: childEnv(), encoding: "utf-8", timeout: 3000, windowsHide: true }).trim();
-    return name || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Build the serverConfig payload for API responses.
  * Reads config.json fresh each call so the response reflects the latest file on disk.
  */
 export function getServerConfig(
-  gitUser: string | null,
   agentToolIntegration?: string | null,
   /** `cookieHost`: advertise the cookie switch (local sessions only: never remote mode or `--tailscale`). */
-  options: { cookieHost?: boolean } = {},
+  options: { cookieHost?: boolean; hideAgentSettings?: boolean } = {},
 ): {
-  displayName?: string;
   diffOptions?: DiffOptions;
-  reviewDefaults?: ReviewDefaults;
   theme?: ThemeConfig;
   favicon?: FaviconStyle;
   reviewAnalysis: NonNullable<PlannotatorConfig["reviewAnalysis"]>;
-  gitUser?: string;
   conventionalComments?: boolean;
   conventionalLabels?: CCLabelConfig[] | null;
   agentTerminalSide?: PlannotatorConfig["agentTerminalSide"];
@@ -1634,9 +1616,7 @@ export function getServerConfig(
   const agentToolHost = agentToolHostOf(agentToolIntegration);
   const annotateView = parseAnnotateView(cfg.annotateView);
   return {
-    displayName: cfg.displayName,
     diffOptions: cfg.diffOptions,
-    ...(cfg.reviewDefaults !== undefined && { reviewDefaults: cfg.reviewDefaults }),
     ...(cfg.theme !== undefined && { theme: cfg.theme }),
     ...(isFaviconStyle(cfg.favicon) && { favicon: cfg.favicon }),
     // These values gate server-side work, so always make the resolved defaults
@@ -1646,18 +1626,17 @@ export function getServerConfig(
       semanticDiff: cfg.reviewAnalysis?.semanticDiff !== false,
       callFlow: cfg.reviewAnalysis?.callFlow === true,
     },
-    gitUser: gitUser ?? undefined,
     ...(cfg.conventionalComments !== undefined && { conventionalComments: cfg.conventionalComments }),
     ...(cfg.conventionalLabels !== undefined && { conventionalLabels: cfg.conventionalLabels }),
-    ...(isAgentTerminalSide(cfg.agentTerminalSide) && { agentTerminalSide: cfg.agentTerminalSide }),
-    ...(typeof cfg.agentTerminalDefaultAgent === "string" &&
-      cfg.agentTerminalDefaultAgent !== "" && {
-        agentTerminalDefaultAgent: cfg.agentTerminalDefaultAgent,
-      }),
-    ...agentSwitchAdvert(cfg.agentSwitch),
+    ...(!options.hideAgentSettings && {
+      ...(isAgentTerminalSide(cfg.agentTerminalSide) && { agentTerminalSide: cfg.agentTerminalSide }),
+      ...(typeof cfg.agentTerminalDefaultAgent === "string" &&
+        cfg.agentTerminalDefaultAgent !== "" && { agentTerminalDefaultAgent: cfg.agentTerminalDefaultAgent }),
+      ...agentSwitchAdvert(cfg.agentSwitch),
+      ...agentToolAdvert(cfg, agentToolEnv, agentToolHost),
+    }),
     // Only a known view is advertised; a typo leaves the page on today's default.
     ...(annotateView !== undefined && { annotateView }),
-    ...agentToolAdvert(cfg, agentToolEnv, agentToolHost),
     // Always explicit: the lookup is server-enforced, so the page must never
     // show it on from a stale value. lookupEnv carries the env hard off.
     packageChanges: {
@@ -2642,19 +2621,6 @@ export function cookieHostConfigWrite(value: unknown, exposed: boolean): { statu
   if (outcome === "env") return { status: 409, body: { error: "PLANNOTATOR_URL_HOST decides this setting.", code: "cookie_host_env_decides", cookieHost: state } };
   if (outcome === "url_host") return { status: 409, body: { error: "config.json already sets urlHost; it is not replaced.", code: "cookie_host_url_host_in_use", cookieHost: state } };
   return { status: 500, body: { error: "config.json could not be saved; nothing changed.", cookieHost: state } };
-}
-
-/**
- * Resolve whether Plannotator-managed AI features are enabled.
- *
- * Set PLANNOTATOR_AI=disabled to prevent provider runtime initialization and
- * hide the corresponding UI. External agents may still open Plannotator as a
- * review surface and submit annotations through the external annotation API.
- */
-export function resolveAIEnabled(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return env.PLANNOTATOR_AI?.toLowerCase() !== "disabled";
 }
 
 /**

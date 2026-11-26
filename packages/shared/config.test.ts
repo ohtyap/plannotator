@@ -17,7 +17,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  resolveAIEnabled,
   resolveClaudeSandbox,
   resolveCursorSandbox,
   resolveGitRemoteCheck,
@@ -151,7 +150,7 @@ describe("reviewDefaults persistence", () => {
     const cfg = loadConfig();
     expect(cfg.diffOptions?.defaultDiffType).toBe("uncommitted");
     expect(cfg.reviewDefaults).toEqual({ other: { defaultDiffType: "x" }, jj: { defaultDiffType: "jj-evolog" } });
-    expect(getServerConfig(null).reviewDefaults?.jj).toEqual({ defaultDiffType: "jj-evolog" });
+    expect(getServerConfig()).not.toHaveProperty("reviewDefaults");
   });
 });
 
@@ -172,7 +171,7 @@ describe("annotateView (the view an annotate session opens in)", () => {
 
   const advertised = (raw: unknown): unknown => {
     writeFileSync(join(tempDir, "config.json"), JSON.stringify({ annotateView: raw }));
-    return getServerConfig(null).annotateView;
+    return getServerConfig().annotateView;
   };
 
   test("each of the toolbar's three views is served to the page as written", () => {
@@ -189,7 +188,7 @@ describe("annotateView (the view an annotate session opens in)", () => {
 
   test("unset is left out", () => {
     writeFileSync(join(tempDir, "config.json"), JSON.stringify({ displayName: "x" }));
-    expect("annotateView" in getServerConfig(null)).toBe(false);
+    expect("annotateView" in getServerConfig()).toBe(false);
   });
 });
 
@@ -209,22 +208,6 @@ describe("parseReviewAnalysisConfig", () => {
 
   test("ignores unknown keys instead of persisting them", () => {
     expect(parseReviewAnalysisConfig({ callFlow: true, futureFlag: true })).toEqual({ callFlow: true });
-  });
-});
-
-describe("resolveAIEnabled", () => {
-  test("defaults to enabled", () => {
-    expect(resolveAIEnabled({})).toBe(true);
-  });
-
-  test("disabled is case-insensitive", () => {
-    expect(resolveAIEnabled({ PLANNOTATOR_AI: "disabled" })).toBe(false);
-    expect(resolveAIEnabled({ PLANNOTATOR_AI: "Disabled" })).toBe(false);
-  });
-
-  test("other values keep AI enabled", () => {
-    expect(resolveAIEnabled({ PLANNOTATOR_AI: "enabled" })).toBe(true);
-    expect(resolveAIEnabled({ PLANNOTATOR_AI: "false" })).toBe(true);
   });
 });
 
@@ -734,20 +717,20 @@ describe("getServerConfig agent tool advert", () => {
   });
 
   test("unset: the host default, marked not configured; no host, nothing", () => {
-    expect(getServerConfig(null, "pi")).toMatchObject({ agentTool: false, agentToolConfigured: false, agentToolHost: "pi", agentToolEnabled: false });
-    expect(getServerConfig(null, "claude-code")).toMatchObject({ agentTool: true, agentToolConfigured: false, agentToolHost: "claude-code", agentToolEnabled: true });
+    expect(getServerConfig("pi")).toMatchObject({ agentTool: false, agentToolConfigured: false, agentToolHost: "pi", agentToolEnabled: false });
+    expect(getServerConfig("claude-code")).toMatchObject({ agentTool: true, agentToolConfigured: false, agentToolHost: "claude-code", agentToolEnabled: true });
     // Oh My Pi: on by default, so the Settings row shows it on and the one-time offer has nothing to offer.
-    expect(getServerConfig(null, "oh-my-pi")).toMatchObject({ agentTool: true, agentToolConfigured: false, agentToolHost: "oh-my-pi", agentToolEnabled: true });
-    const codex = getServerConfig(null, "codex");
+    expect(getServerConfig("oh-my-pi")).toMatchObject({ agentTool: true, agentToolConfigured: false, agentToolHost: "oh-my-pi", agentToolEnabled: true });
+    const codex = getServerConfig("codex");
     expect([codex.agentTool, codex.agentToolHost, codex.agentToolEnabled]).toEqual([undefined, undefined, undefined]);
   });
 
   test("a saved choice is reported, and an env override is reported beside it", () => {
     saveConfig({ agentTool: true });
-    expect(getServerConfig(null, "opencode")).toMatchObject({ agentTool: true, agentToolConfigured: true, agentToolEnabled: true });
-    expect(getServerConfig(null, "opencode").agentToolEnv).toBeUndefined();
+    expect(getServerConfig("opencode")).toMatchObject({ agentTool: true, agentToolConfigured: true, agentToolEnabled: true });
+    expect(getServerConfig("opencode").agentToolEnv).toBeUndefined();
     process.env.PLANNOTATOR_AGENT_TOOL = "0";
-    expect(getServerConfig(null, "opencode")).toMatchObject({ agentTool: true, agentToolEnv: false, agentToolEnabled: false });
+    expect(getServerConfig("opencode")).toMatchObject({ agentTool: true, agentToolEnv: false, agentToolEnabled: false });
   });
 
   test("agentToolSaveFailed tells a write that reached config.json from one that did not", () => {
@@ -790,23 +773,23 @@ describe("favicon config persistence", () => {
   test("persists and reads valid favicon styles via saveConfig and getServerConfig", () => {
     saveConfig({ favicon: "yellow" });
     expect(loadConfig().favicon).toBe("yellow");
-    expect(getServerConfig(null).favicon).toBe("yellow");
+    expect(getServerConfig().favicon).toBe("yellow");
 
     saveConfig({ favicon: "totman" });
     expect(loadConfig().favicon).toBe("totman");
-    expect(getServerConfig(null).favicon).toBe("totman");
+    expect(getServerConfig().favicon).toBe("totman");
   });
 
   test("omits unknown favicon styles from getServerConfig", () => {
     const unknownFavicon = "unknown" as unknown as PlannotatorConfig["favicon"];
     saveConfig({ favicon: unknownFavicon });
     expect(loadConfig().favicon).toBe(unknownFavicon);
-    expect(getServerConfig(null).favicon).toBeUndefined();
+    expect(getServerConfig().favicon).toBeUndefined();
   });
 
   test("a 'classic' left by 0.28.57 (the removed P icon) reads as unset and stays in the file", () => {
     saveConfig({ favicon: "classic" as unknown as PlannotatorConfig["favicon"] });
-    expect(getServerConfig(null).favicon).toBeUndefined();
+    expect(getServerConfig().favicon).toBeUndefined();
     expect(loadConfig().favicon as string).toBe("classic");
   });
 });

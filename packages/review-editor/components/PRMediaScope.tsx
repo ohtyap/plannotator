@@ -128,7 +128,7 @@ export function PRMediaScope({ children }: { children: React.ReactNode }): React
     >
       {children}
       {lightbox && createPortal(
-        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />,
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} showWheelHint={false} onClose={() => setLightbox(null)} />,
         document.body,
       )}
     </div>

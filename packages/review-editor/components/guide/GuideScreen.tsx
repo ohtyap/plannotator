@@ -291,9 +291,7 @@ function ActiveGuide({
   );
   // Shared guide-launch defaults, for the outdated-saved-guide "Regenerate"
   // hint (#1112) — same params GuideEmptyState's Generate button would send.
-  // Only an outdated guide offers Regenerate, so only then load the model
-  // catalog (which spawns the engine's CLI once per server process).
-  const guideLaunch = useGuideLaunch(capabilities, { loadModels: !!guide?.moved });
+  const guideLaunch = useGuideLaunch(capabilities);
   const [regenerating, setRegenerating] = useState(false);
   const handleRegenerate = async () => {
     if (!guideLaunch.canLaunch || regenerating) return;
@@ -360,7 +358,6 @@ function ActiveGuide({
         provider: 'guide',
         label: 'Guide Repair',
         repairOf: failedJob.id,
-        ...(failedJob.engine ? { engine: failedJob.engine } : {}),
       });
       // A successful launch lands as a new running guide job — GuideScreen's
       // running-job branch takes over from here automatically (same as

@@ -249,7 +249,6 @@ describe("code review with color forced on in the user's git config (#1661)", ()
 
   const testIfJj = hasJj() ? test : test.skip;
   const JJ_MODULES = [
-    ["Bun", resolve(import.meta.dir, "vcs.ts")],
     ["Pi", resolve(import.meta.dir, "../../apps/pi-extension/server/vcs.ts")],
   ] as const;
   for (const [name, modulePath] of JJ_MODULES) {

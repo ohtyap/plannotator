@@ -62,7 +62,7 @@ async function review(): Promise<{ url: string; close: () => Promise<void> }> {
     PLANNOTATOR_SKIP_BROWSER_OPEN: '1',
     PLANNOTATOR_REMOTE: '0',
     PLANNOTATOR_INBOX_CONNECT: '0',
-    PLANNOTATOR_AI: 'disabled',
+    PLANNOTATOR_OPENCODE_URL: '',
     PLANNOTATOR_UPDATE_CHECK: '0',
     PLANNOTATOR_GIT_REMOTE_CHECK: '0',
   };

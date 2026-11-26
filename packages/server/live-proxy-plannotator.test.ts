@@ -39,7 +39,7 @@ import { startReviewServer } from "./review";
 
 const MINIMAL_HTML = "<html><body>Plannotator</body></html>";
 const PATCH = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n";
-const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_AI", "PLANNOTATOR_INBOX_CONNECT"] as const;
+const KEYS = ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_PORT", "PLANNOTATOR_REMOTE", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_INBOX_CONNECT"] as const;
 const saved: Record<string, string | undefined> = {};
 let root: string;
 let dataDir: string;
@@ -52,7 +52,7 @@ beforeEach(() => {
   mkdirSync(dataDir, { recursive: true });
   process.env.PLANNOTATOR_DATA_DIR = dataDir;
   process.env.PLANNOTATOR_REMOTE = "0";
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_INBOX_CONNECT = "0";
   delete process.env.PLANNOTATOR_PORT;
 });

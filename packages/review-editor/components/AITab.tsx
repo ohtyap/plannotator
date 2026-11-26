@@ -29,6 +29,7 @@ interface AITabProps {
   permissionRequests?: PendingPermission[];
   onRespondToPermission?: (requestId: string, allow: boolean) => void;
   aiProviders?: AIProviderOption[];
+  hideProviderBar?: boolean;
   aiConfig?: { providerId: string | null; model: string | null; reasoningEffort?: string | null };
   onAIConfigChange?: (config: { providerId?: string | null; model?: string | null; reasoningEffort?: string | null }) => void;
   hasAISession?: boolean;
@@ -64,6 +65,7 @@ export const AITab: React.FC<AITabProps> = ({
   permissionRequests = [],
   onRespondToPermission,
   aiProviders = [],
+  hideProviderBar,
   aiConfig,
   onAIConfigChange,
   hasAISession = false,
@@ -189,7 +191,7 @@ export const AITab: React.FC<AITabProps> = ({
         <PanelEmptyState className="flex-1">
           <p>No questions yet. Select lines and choose Ask AI, or ask about the whole change below.</p>
         </PanelEmptyState>
-        <AIConfigBar
+        {!hideProviderBar && <AIConfigBar
           providers={aiProviders}
           selectedProviderId={aiConfig?.providerId ?? null}
           selectedModel={aiConfig?.model ?? null}
@@ -199,7 +201,7 @@ export const AITab: React.FC<AITabProps> = ({
           onReasoningEffortChange={(effort) => onAIConfigChange?.({ reasoningEffort: effort })}
           hasSession={hasAISession}
           setupHint={askSessionSetupHint}
-        />
+        />}
         {onAskGeneral && <GeneralInput value={generalInput} onChange={setGeneralInput} onSubmit={handleGeneralSubmit} disabled={isStreaming} isStreaming={isStreaming} onStop={onStop} observationOnly={listenOnly} />}
       </div>
     );
@@ -296,7 +298,7 @@ export const AITab: React.FC<AITabProps> = ({
       )}
 
       {/* Config bar */}
-      <AIConfigBar
+      {!hideProviderBar && <AIConfigBar
         providers={aiProviders}
         selectedProviderId={aiConfig?.providerId ?? null}
         selectedModel={aiConfig?.model ?? null}
@@ -306,7 +308,7 @@ export const AITab: React.FC<AITabProps> = ({
         onReasoningEffortChange={(effort) => onAIConfigChange?.({ reasoningEffort: effort })}
         hasSession={hasAISession}
         setupHint={askSessionSetupHint}
-      />
+      />}
 
       {/* General question input */}
       {onAskGeneral && <GeneralInput value={generalInput} onChange={setGeneralInput} onSubmit={handleGeneralSubmit} disabled={isStreaming} isStreaming={isStreaming} onStop={onStop} observationOnly={listenOnly} />}

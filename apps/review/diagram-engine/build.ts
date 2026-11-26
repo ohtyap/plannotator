@@ -145,6 +145,7 @@ function guardBundle(): Plugin {
     'utils/storage.ts',
     'utils/themeRegistry.ts',
     'utils/identity.ts',
+    'utils/annotationIdentityPolicy.ts',
     'utils/generateIdentity.ts',
     'utils/math.ts',
     'components/ThemeProvider.tsx',

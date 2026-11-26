@@ -17,7 +17,7 @@ import type {
   SelectedLineRange,
   VirtualFileMetrics,
 } from '@pierre/diffs';
-import { CodeView, EditProvider, type CodeViewAnnotationArgs, type CodeViewHandle, useStableCallback, useWorkerPool } from '@pierre/diffs/react';
+import { CodeView, type CodeViewAnnotationArgs, type CodeViewHandle, useStableCallback, useWorkerPool } from '@pierre/diffs/react';
 import type { DiffTokenEventBaseProps } from '@pierre/diffs';
 import type {
   CodeAnnotation,
@@ -80,13 +80,9 @@ import { BinaryFileNotice } from './BinaryFileNotice';
 import { ChangeNotice } from './ChangeNotice';
 import { changeNotice } from '../utils/changeNotice';
 import { GeneratedFileNotice } from './GeneratedFileNotice';
-import { EditSessionHud } from './EditSessionHud';
 import { FileCommentBanner } from './FileCommentBanner';
 import { annotationMatchesPrScope, isFileScopedAnnotation, lineRangeForAnnotation } from '../utils/annotationScope';
 import { openInLineForDiff } from '../utils/openInLine';
-import { useEditSession } from '../edit/useEditSession';
-import type { EditSelectionAnnotationRequest, EditSelectionComment } from '../edit/useEditSession';
-import type { SuggestionHunk } from '../edit/deriveSuggestions';
 import { lineAnnotationMetadata } from '../utils/annotationDisplay';
 import { InlineAnnotation } from './InlineAnnotation';
 import { InlineAIMarker } from './InlineAIMarker';
@@ -192,15 +188,6 @@ export type AllFilesOrder = 'tree' | 'kind' | 'list';
  *    Pierre's virtual window and expose a large blank tail.
  *
  * The worker pool remains a later phase.
- *
- * EXPERIMENTAL edit-to-suggestion (flag-gated, default OFF): the plain
- * all-files panel can opt into Pierre's experimental edit mode. One file at a
- * time enters an in-place editor (lazy-loaded chunk); on completion the net
- * change is diffed against the pre-session content and becomes ordinary
- * suggestion annotations. The item's pristine FileDiffMetadata is deep-cloned
- * before the session and restored (version bump + updateItem) when it ends,
- * because Pierre's editor mutates the metadata in place. See
- * ../edit/useEditSession.ts and ../edit/pierreEditAdapter.ts.
  */
 export interface AllFilesLineTarget {
   path: string;
@@ -288,8 +275,6 @@ export interface AllFilesCodeViewProps {
     show: (filePath: string, view: MarkdownFileView) => void;
     /** The file's Source / Changes / Read control, drawn in its header. */
     renderViewControl: (args: { file: DiffFile; iconOnly: boolean; touch: boolean }) => React.ReactNode;
-    /** The file the edit session holds (null when none): its view must not change mid-edit. */
-    onEditingFileChange?: (filePath: string | null) => void;
     /**
      * Registers how to find the Markdown file a view key should act on: the
      * file holding focus or under the pointer, else the top-most Markdown
@@ -510,21 +495,6 @@ export interface AllFilesCodeViewProps {
    * comment box at once, as always.
    */
   selectionActions?: DiffSelectionActions;
-  /** EXPERIMENTAL flag-gated edit-to-suggestion mode. Only the plain all-files
-   * dock panel passes this — Guided Review surfaces deliberately do NOT (the
-   * GuideViewportManager drops CodeViews that leave its outer window, which would
-   * destroy an active editor's state; scoping edit mode to this surface is the
-   * simple safe v1 choice). When absent/false, no edit UI renders and no
-   * editor is ever constructed (code-split hosts also never fetch the editor
-   * chunk; the single-file build inlines it, functionally inert). */
-  enableEditSuggestions?: boolean;
-  /** Sink for suggestions derived from a completed edit session. Required for
-   * edit mode to activate. */
-  onAddSuggestionsForFile?: (filePath: string, hunks: SuggestionHunk[]) => void;
-  /** Sink for a comment authored through the edit session's Selection Action
-   * ("Make annotation"): a line-scoped comment anchored to PRISTINE new-side
-   * lines snapshotted at selection time (see edit/selectionAnchor.ts). */
-  onAddEditorCommentForFile?: (filePath: string, comment: EditSelectionComment) => void;
 }
 
 /** Where a host's context note sits: its file, side and lines (it draws under `lineEnd`); in its own module. */
@@ -963,9 +933,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
   flushFiles = false,
   headerKeepsFolder = false,
   scrollsWithPage = false,
-  enableEditSuggestions = false,
-  onAddSuggestionsForFile,
-  onAddEditorCommentForFile,
 }) => {
   const mountCollapsedRef = useRef(mountCollapsed);
   const seedCollapsed = mountCollapsedRef.current ?? defaultCollapsed;
@@ -1641,16 +1608,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     visibleItemIdRef.current = null;
     passCandidateItemRef.current = null;
     hasScrolledRef.current = false;
-    // An edit session cannot survive the CodeView remount (Pierre tears the
-    // editor down without a completion callback), and fileSetKey also changes
-    // on sort-order / collapse-default flips, not just diff switches. The
-    // session controller drops a clean session silently; a dirty one prompts
-    // to keep its recovered edits as suggestions (this effect runs
-    // post-commit, so the synchronous confirm inside is safe).
-    editSession.handleFileSetChange();
-    // A pending editor-selection comment entry is anchored to the OLD diff's
-    // pristine coordinates — stale once the file set changes.
-    setSelectionAnnotationRequest(null);
     setFileCommentAnchor(null);
     fileCommentButtonRefs.current.clear();
     // Resync the header-refresh snapshots to the current props so the post-
@@ -1729,11 +1686,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     const item = handle?.getItem(itemId);
     if (handle == null || viewer == null || item == null) return;
 
-    // Collapsing a file that is mid-edit ends its session first (Pierre would
-    // otherwise end it implicitly; routing through finishIfEditing keeps the
-    // suggestion capture + pristine restore on our one code path).
-    if (item.collapsed !== true) editSession.finishIfEditing(itemId);
-
     // If the item top is above scrollTop, re-anchor after the update so the
     // collapsing file stays in view (it would otherwise shift the content
     // below it upward, jumping the scroll). Diffshub anchor fix.
@@ -1755,7 +1707,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     const handle = viewerRef.current;
     const item = handle?.getItem(itemId);
     if (handle == null || item == null || item.collapsed === true) return;
-    editSession.finishIfEditing(itemId);
     item.collapsed = true;
     item.version = (item.version ?? 0) + 1;
     handle.updateItem(item);
@@ -1790,7 +1741,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     for (const { id } of identity.items) {
       const item = handle.getItem(id);
       if (item == null || (item.collapsed === true) === collapsed) continue;
-      if (collapsed) editSession.finishIfEditing(id);
       item.collapsed = collapsed;
       item.version = (item.version ?? 0) + 1;
       handle.updateItem(item);
@@ -2013,38 +1963,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
 
-  // --- Edit-to-suggestion sessions (EXPERIMENTAL, flag-gated) -----------------
-  // One file at a time; the editor chunk lazy-loads on first entry; the item's
-  // pristine FileDiffMetadata is deep-cloned before the session and restored
-  // (via version bump + updateItem) when it ends. See useEditSession.
-  const editEnabled = enableEditSuggestions && onAddSuggestionsForFile != null;
-  // A pending "Make annotation" request from the edit session's Selection
-  // Action popover. The Pierre popover (shadow DOM) only snapshots the
-  // selection; the actual comment entry is the app's own CommentPopover,
-  // anchored at the snapshotted rect — focusing an input inside the editor's
-  // popover would blur the editor, collapse the selection, and tear the
-  // popover down mid-typing, so entry deliberately lives OUTSIDE the editor.
-  const [selectionAnnotationRequest, setSelectionAnnotationRequest] =
-    useState<EditSelectionAnnotationRequest | null>(null);
-  const editSession = useEditSession({
-    enabled: editEnabled,
-    viewerRef,
-    itemIdToFileRef,
-    fileSetKeyRef,
-    reviewBaseRef,
-    reviewSnapshotIdRef,
-    annotationsRef,
-    onAddSuggestions: onAddSuggestionsForFile,
-    onSelectionAnnotation: onAddEditorCommentForFile ? setSelectionAnnotationRequest : undefined,
-    refreshItem,
-  });
-  // Surface a mid-session comment inside the editor as a marker as soon as it
-  // lands in the annotations prop. Stable callback; no-op outside a session.
-  const refreshEditSessionMarkers = editSession.refreshMarkers;
-  useEffect(() => {
-    refreshEditSessionMarkers();
-  }, [annotations, refreshEditSessionMarkers]);
-
   const lastScrollTsRef = useRef(0);
   const warmUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warmedUpRef = useRef(new Map<string, string>());
@@ -2158,7 +2076,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     const handle = viewerRef.current;
     const item = handle?.getItem(itemId);
     if (!pair || handle == null || item == null || item.type !== 'diff') return;
-    if (itemId === editSession.editingItemIdRef.current) return;
     const state = semStateRef.current.get(itemId);
     const pending = pendingSummaryRef.current.get(itemId);
     pendingSummaryRef.current.delete(itemId);
@@ -2244,7 +2161,7 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     if (semanticEnabled && !semanticWasEnabledRef.current) semanticAskedForRef.current = new Set([...itemNodeRef.current.keys()].filter((itemId) => !semDiffsRef.current.has(itemId)).map((itemId) => `${fileSetKeyRef.current}::${itemId}`));
     semanticWasEnabledRef.current = semanticEnabled;
     for (const itemId of semDiffsRef.current.keys()) showSemantic(itemId, semanticEnabled);
-    for (const itemId of semStateRef.current.keys()) if (!semDiffsRef.current.has(itemId) || itemId === editSession.editingItemIdRef.current) refreshItem(itemId);
+    for (const itemId of semStateRef.current.keys()) if (!semDiffsRef.current.has(itemId)) refreshItem(itemId);
   }, [semanticEnabled, showSemantic, refreshItem]);
 
   const reportPowerUp = useStableCallback(() => {
@@ -2306,7 +2223,7 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       }
       const liveHandle = viewerRef.current;
       const item = liveHandle?.getItem(itemId);
-      if (liveHandle == null || item == null || item.type !== 'diff' || itemId === editSession.editingItemIdRef.current) {
+      if (liveHandle == null || item == null || item.type !== 'diff') {
         onDropped();
         return;
       }
@@ -2756,8 +2673,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       const host = rootNode instanceof ShadowRoot ? rootNode.host : null;
       const itemId = host instanceof HTMLElement ? nodeToItemIdRef.current.get(host) : undefined;
       if (itemId == null) return;
-      // Text drags inside an active editor are the editor's own selection.
-      if (itemId === editSession.editingItemIdRef.current) return;
       const filePath = itemIdToFilePath.get(itemId);
       if (filePath == null) return;
       routeSelectionToToolbar(
@@ -2871,8 +2786,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       const item = handle.getItem(id);
       if (item == null || item.type !== 'diff') continue;
       if (want) {
-        // Never swap the document out from under an edit session.
-        if (id === editSession.editingItemIdRef.current) continue;
         fullDiffsRef.current.set(id, item.fileDiff);
         item.fileDiff = markdownPreviewFileDiff(item.fileDiff);
         applied.add(id);
@@ -2888,18 +2801,14 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       handle.updateItem(item);
       if (!want) syncHeaderMetrics(id);
     }
-    // editingItemId: a swap held back for the editing file runs once it ends.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewItemIds, identity, editSession.editingItemId]);
+  }, [previewItemIds, identity]);
 
   // A search hit in a previewed file shows that file as Source (v1: hits are
   // in the diff text).
-  // The file in an edit session always shows its diff (the swap never takes
-  // it out from under the editor), so a hit there scrolls, whatever its view.
   const activeMatchItemId = activeSearchMatch != null ? filePathToItemId.get(activeSearchMatch.filePath) ?? '' : '';
   const activeMatchPreviewed = activeSearchMatch != null
-    && previewItemIds.has(activeMatchItemId)
-    && activeMatchItemId !== editSession.editingItemId;
+    && previewItemIds.has(activeMatchItemId);
 
   useEffect(() => {
     if (!isActive) return;
@@ -3348,7 +3257,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       if (range == null || item.type !== 'diff') return;
       // The file being edited owns its pointer interactions — opening the
       // annotation toolbar over an active editor would fight its focus.
-      if (item.id === editSession.editingItemIdRef.current) return;
       const filePath = itemIdToFilePath.get(item.id);
       if (filePath == null) return;
       if (resolveLineSelectionBehavior({
@@ -3949,17 +3857,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
     jumpChange,
   ]);
 
-  // --- Markdown view: the editing file, and the file a view key acts on ------
-
-  const editingFilePath = editSession.editingItemId != null
-    ? itemIdToFilePath.get(editSession.editingItemId) ?? null
-    : null;
-  const onEditingFileChange = markdownPreview?.onEditingFileChange;
-  useEffect(() => {
-    onEditingFileChange?.(editingFilePath);
-  }, [onEditingFileChange, editingFilePath]);
-  useEffect(() => () => onEditingFileChange?.(null), [onEditingFileChange]);
-
   // Last pointer position over this view (null once it leaves).
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const resolveViewTarget = useStableCallback((): string | null => {
@@ -4013,8 +3910,8 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
   const fileHeaderInputs = useMemo(
     () => ({}),
     [
-      itemIdToFilePath, itemIdToFile, markdownPreview, previewItemIds, fileCommentsByPath, renderImagePreview, editEnabled,
-      editSession.editingItemId, measuredHeaderItemIds, compactTouchLayout, headerKeepsFolder, readOnly, commentOnly, fileOpenIn,
+      itemIdToFilePath, itemIdToFile, markdownPreview, previewItemIds, fileCommentsByPath, renderImagePreview,
+      measuredHeaderItemIds, compactTouchLayout, headerKeepsFolder, readOnly, commentOnly, fileOpenIn,
       viewedFiles, generatedFiles, onToggleViewed, showViewedControls, stagedFiles, stagingFile, onStage, canStagePath,
       canStageFiles, showStageControls, stageError, onAddFileCommentForFile, hostFileNotesByPath, renderPackageChanges,
       selectedAnnotationId, onSelectAnnotation, onEditAnnotation, onDeleteAnnotation, explainHandler, agentFindingSources,
@@ -4056,12 +3953,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
           onHeightChange: remeasure,
         })
       : null;
-    // Edit-to-suggestion affordance (flag-gated). Slot portals republish on
-    // updateItem BEFORE React commits state, so read the session's refs.
-    const isEditingThis = editEnabled && editSession.editingItemIdRef.current === item.id;
-    const editDisabledReason = editEnabled
-      ? (previewed ? 'Switch to Source to edit this file' : editSession.editUnavailableRef.current.get(filePath) ?? null)
-      : null;
 
     return (
       <div
@@ -4085,9 +3976,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
         }}
         status={file.status}
         oldPath={file.oldPath}
-        onEditFile={editEnabled ? () => editSession.startEdit(item.id) : undefined}
-        isEditing={isEditingThis}
-        editDisabledReason={editDisabledReason}
         isViewed={viewedFiles?.has(filePath)}
         isGenerated={generatedFiles?.has(filePath) === true}
         isTest={fileKind(filePath, generatedFiles) === 'test'}
@@ -4180,17 +4068,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
           <BinaryFileNotice onHeightChange={() => refreshItem(item.id)} />
         )}
         {!collapsed && !imagePreview && notice && <ChangeNotice text={notice} onHeightChange={() => refreshItem(item.id)} />}
-        {/* EXPERIMENTAL edit-session HUD: session controls + state in a slim
-            strip below the header, above the file content. Appears/disappears
-            with session start/end, which both go through a version-bumped
-            updateItem, so the slot height is re-measured on each transition. */}
-        {isEditingThis && (
-          <EditSessionHud
-            onComplete={editSession.completeEdit}
-            onCancel={editSession.cancelEdit}
-            dirtyStore={editSession.dirtyStore}
-          />
-        )}
         {/* The host's notes on the whole file (the PR page: others' comments on it), above the person's own, shown
             only when the file is expanded. The header is measured while a file has any (measuredHeaderItemIds). */}
         {!collapsed && (hostFileNotesByPathRef.current.get(filePath) ?? []).map((note) => (
@@ -4447,13 +4324,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       onScroll={handleScroll}
       renderCustomHeader={renderCustomHeader}
       renderAnnotation={renderAnnotation}
-      // Edit-to-suggestion (flag-gated): only wired when enabled so the
-      // flag-off surface is byte-identical to the pre-feature one.
-      {...(editEnabled && {
-        editorOptions: editSession.editorOptions,
-        onItemEditChange: editSession.onItemEditChange,
-        onItemEditComplete: editSession.onItemEditComplete,
-      })}
     />
   );
 
@@ -4462,17 +4332,10 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
       className="relative h-full"
       // The hidden trailing row's room, given back (flushFiles): the next file's header meets the last code row.
       style={flushesFiles && trailingUnread ? { marginBottom: -separatorHeight } : undefined}
-      data-history-owner={editSession.editingItemId ? 'edit-session' : undefined}
       onPointerMove={markdownPreview ? (event) => { pointerRef.current = { x: event.clientX, y: event.clientY }; } : undefined}
       onPointerLeave={markdownPreview ? () => { pointerRef.current = null; } : undefined}
     >
-      {/* EditProvider only mounts when the experimental flag is on; its
-          factory declines attaches until the lazy editor chunk has loaded
-          (the chunk loads on first Edit click, never before). */}
-      {(() => {
-        const viewer = editEnabled ? <EditProvider createEditor={editSession.createEditor}>{codeView}</EditProvider> : codeView;
-        return steadyReviewState ? <ReviewStateProvider value={steadyReviewState}>{viewer}</ReviewStateProvider> : viewer;
-      })()}
+      {steadyReviewState ? <ReviewStateProvider value={steadyReviewState}>{codeView}</ReviewStateProvider> : codeView}
       {diffOverflow !== 'wrap' && <DiffBottomBar root={scrollEl} />}
       {minimapOn && (
         <CodeViewMinimap
@@ -4538,35 +4401,6 @@ export const AllFilesCodeView: React.FC<AllFilesCodeViewProps> = ({
         />
       )}
 
-      {/* Comment entry for the edit session's "Make annotation" action. The
-          anchor rect and the pristine line range were snapshotted at click
-          time, so this stays valid even if the editor selection has since
-          collapsed or the session has ended (pristine coordinates are
-          session-invariant). */}
-      {!readOnly && selectionAnnotationRequest && onAddEditorCommentForFile && (
-        <CommentPopover
-          key={`edit-selection:${selectionAnnotationRequest.filePath}:${selectionAnnotationRequest.lineStart}-${selectionAnnotationRequest.lineEnd}`}
-          anchorRect={selectionAnnotationRequest.anchorRect}
-          contextText={selectionAnnotationRequest.selectedText.replace(/\s+/g, ' ').trim()}
-          isGlobal={false}
-          allowImages={false}
-          onSubmit={(text) => {
-            onAddEditorCommentForFile(selectionAnnotationRequest.filePath, {
-              lineStart: selectionAnnotationRequest.lineStart,
-              lineEnd: selectionAnnotationRequest.lineEnd,
-              exact: selectionAnnotationRequest.exact,
-              selectedText: selectionAnnotationRequest.selectedText,
-              text,
-            });
-            // The editor kept its ranged selection while the entry was open;
-            // collapse it so the Selection Action popover does not re-open
-            // over the just-annotated lines.
-            editSession.collapseSelection();
-            setSelectionAnnotationRequest(null);
-          }}
-          onClose={() => setSelectionAnnotationRequest(null)}
-        />
-      )}
     </div>
   );
 };

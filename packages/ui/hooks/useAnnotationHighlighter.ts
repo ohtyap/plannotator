@@ -17,7 +17,7 @@ import {
   trimWhitespaceOnlyBoundaryNodes,
   type SelectedNodeLike,
 } from '../utils/selectionBoundary';
-import { getIdentity } from '../utils/identity';
+import { getAnnotationAuthor } from '../utils/identity';
 import { annotationOwnsHighlight } from '../utils/annotationOwnsHighlight';
 import { transformPlainText } from '../utils/inlineTransforms';
 import { richCopySourceFromRange, type RichCopySource } from '../utils/richClipboard';
@@ -1330,7 +1330,7 @@ export function useAnnotationHighlighter({
       text,
       originalText: source.text,
       createdA: Date.now(),
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       startMeta: source.startMeta,
       endMeta: source.endMeta,
       images,
@@ -1399,7 +1399,7 @@ export function useAnnotationHighlighter({
       text,
       originalText: source.text,
       createdA: Date.now(),
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       images,
       ...(mentions && mentions.length > 0 ? { mentions } : {}),
       ...(isQuickLabel ? { isQuickLabel: true } : {}),
@@ -3075,7 +3075,7 @@ export function useAnnotationHighlighter({
         text: '',
         originalText: source.text,
         createdA: Date.now(),
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
       };
     } else {
       annotation = buildAnnotationFromSource(highlighter, source, AnnotationType.COMMENT, '');

@@ -1,929 +1,219 @@
-/**
- * Agent Jobs — Bun server handler.
- *
- * Manages background agent processes (spawn, monitor, kill) and exposes
- * HTTP routes + SSE broadcasting for job status updates.
- *
- * Mirrors packages/server/external-annotations.ts in structure.
- * Server-agnostic: takes a mode, server URL getter, and cwd getter.
- */
-
-import { childEnv } from "@plannotator/shared/child-env";
-import { askAiChildEnv } from "@plannotator/ai/providers/ask-ai-env";
-import { killWindowsProcessTree, planAgentJobSpawn } from "@plannotator/ai/providers/command-path";
-import { resolve as resolvePath } from "node:path";
-import { allowedToolsOf, CLAUDE_SHELL_BLOCKED_WARNING, detectClaudeShellBlocked, disallowedToolsOf, formatClaudeLogEvent } from "./claude-review";
 import {
-  MARKER_ENGINES,
-  formatMarkerLogEvent,
-  resolveMarkerBinary,
-  withMarkerBinary,
-  type MarkerEngine,
-  type MarkerEngineId,
-  type MarkerModel,
-} from "./marker-review";
-import {
-  type AgentJobInfo,
-  type AgentJobEvent,
-  type AgentCapability,
-  type AgentCapabilities,
-  isTerminalStatus,
-  jobSource,
-  launchLabelOf,
-  serializeAgentSSEEvent,
-  AGENT_HEARTBEAT_COMMENT,
-  AGENT_HEARTBEAT_INTERVAL_MS,
+  type AgentJobInfo, type AgentJobEvent, type AgentCapabilities,
+  isTerminalStatus, jobSource, launchLabelOf, serializeAgentSSEEvent,
+  AGENT_HEARTBEAT_COMMENT, AGENT_HEARTBEAT_INTERVAL_MS,
 } from "@plannotator/shared/agent-jobs";
 import { resolveGuideLaunchInstructions } from "@plannotator/shared/guide-instructions-store";
-import { gitColorFreeEnvironment } from "@plannotator/shared/review-core";
 import type { GuideLaunchReview } from "@plannotator/shared/guide-format";
 import { crossOriginRefusalBody } from "@plannotator/shared/request-origin";
-import { isSameOriginRequest } from "./request-origin-guard";
 import { checkServerSession, serverSessionMismatchBody } from "@plannotator/shared/server-session";
+import { isSameOriginRequest } from "./request-origin-guard";
 
 export type { AgentJobInfo, AgentJobEvent, AgentCapabilities } from "@plannotator/shared/agent-jobs";
 
-// ---------------------------------------------------------------------------
-// Handler interface
-// ---------------------------------------------------------------------------
+type JobKind = "opencode" | "guide";
 
-export interface AgentJobHandler {
-  handle: (
-    req: Request,
-    url: URL,
-    options?: { disableIdleTimeout?: () => void },
-  ) => Promise<Response | null>;
-  /** Kill all running jobs — call on server shutdown. */
-  killAll: () => void;
-  /** Look up a job by id, or undefined if unknown. */
-  getJob: (id: string) => AgentJobInfo | undefined;
-  /**
-   * Flip a terminal failed/killed job to "done" with the given summary — used
-   * when a manual repair (e.g. guide submitManualOutput) succeeds after the
-   * automatic job failed, so the job's status reflects the now-valid result
-   * instead of staying "failed" forever. Returns false when the job is
-   * unknown or not in a terminal failed/killed state.
-   */
-  completeJobExternally: (id: string, summary: AgentJobInfo["summary"]) => boolean;
+interface JobInput {
+  reviewProfileId?: string;
+  repairOf?: string;
+  instructions?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Route prefixes
-// ---------------------------------------------------------------------------
-
-const BASE = "/api/agents";
-const JOBS = `${BASE}/jobs`;
-const JOBS_STREAM = `${JOBS}/stream`;
-const CAPABILITIES = `${BASE}/capabilities`;
-
-// Providers whose command is owned by the server. Client-supplied argv is never
-// spawned for these — buildCommand must produce the command or the launch fails.
-const SERVER_BUILT_PROVIDERS: ReadonlySet<string> = new Set([
-  "claude",
-  "codex",
-  "guide",
-  "cursor",
-  "opencode",
-  "pi",
-  "copilot",
-]);
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
+interface JobLaunch {
+  cwd: string;
+  label: string;
+  prompt: string;
+  diffContext?: AgentJobInfo["diffContext"];
+  guideContext?: AgentJobInfo["guideContext"];
+  reviewProfileId?: string;
+  reviewProfileLabel?: string;
+  changedFilesSnapshot?: string[];
+  launchReview?: GuideLaunchReview;
+}
 
 export interface AgentJobHandlerOptions {
-  /** Which server mode this handler is mounted in. */
-  mode: "plan" | "review" | "annotate";
-  /**
-   * Returns the server's base URL for spawned subprocesses (e.g.,
-   * "http://127.0.0.1:12345"). Late-bound. Jobs run on the same machine, so
-   * this must stay loopback-reachable regardless of any advertised-URL host
-   * override.
-   */
-  getServerUrl: () => string;
-  /** Returns the working directory for spawned processes. */
-  getCwd: () => string;
-  /**
-   * This server's stale-tab nonce (packages/core/server-session.ts). A launch
-   * whose body, or a kill whose `?serverSession=` query, names a different
-   * one is refused with 409 before anything starts or stops; absent passes.
-   */
-  serverSession?: string;
-  /**
-   * Build the command server-side for a given provider.
-   * Return an object with the command to spawn (and optional output path for result ingestion).
-   * Return null to reject or fall through to frontend-supplied command.
-   */
-  buildCommand?: (provider: string, config?: Record<string, unknown>) => Promise<{
-    command: string[];
-    outputPath?: string;
-    captureStdout?: boolean;
-    stdinPrompt?: string;
-    cwd?: string;
-    label?: string;
-    /** The full prompt text for display in the detail panel. */
-    prompt?: string;
-    /** Underlying engine used (e.g., "claude" or "codex"). Stored on AgentJobInfo for UI display. */
-    engine?: string;
-    /** Model used (e.g., "sonnet", "opus"). Stored on AgentJobInfo for UI display. */
-    model?: string;
-    /** Claude --effort level. */
-    effort?: string;
-    /** Codex reasoning effort level. */
-    reasoningEffort?: string;
-    /** Whether Codex fast mode was enabled. */
-    fastMode?: boolean;
-    /** Pi's unified reasoning level (marker engines only). */
-    thinking?: string;
-    /** PR URL at launch time — used to attribute findings to the correct PR. */
-    prUrl?: string;
-    /** PR diff scope at launch time — "layer" or "full-stack". */
-    diffScope?: string;
-    /** Diff context snapshot at launch (stored on AgentJobInfo for per-job "Copy All"). */
-    diffContext?: AgentJobInfo["diffContext"];
-    /** Resolved review profile id at launch time. Stored on AgentJobInfo. */
-    reviewProfileId?: string;
-    /** Resolved review profile label at launch time. Stored on AgentJobInfo. */
-    reviewProfileLabel?: string;
-    /** Changed-file paths as of launch time (guide provider only) — stored per
-     *  job so onJobComplete can validate refs against the SAME file set the
-     *  model planned section placement against, not whatever patch is on
-     *  screen when the job happens to finish. */
+  serverSession: string;
+  generate?: (prompt: string, cwd: string, signal: AbortSignal) => Promise<string>;
+  prepare: (kind: JobKind, input: JobInput) => Promise<JobLaunch>;
+  onJobComplete: (job: AgentJobInfo, result: {
+    text: string;
+    cwd: string;
     changedFilesSnapshot?: string[];
-    /** Launch-time review-target snapshot (guide provider only) — stored on
-     *  AgentJobInfo so guide persistence labels the envelope with the context
-     *  the guide was generated against (see AgentJobInfo.guideContext). */
-    guideContext?: AgentJobInfo["guideContext"];
-    /** Launch-time review (patch + labels + source) the guide describes (guide
-     *  provider only). Kept server-side like changedFilesSnapshot — NEVER on
-     *  AgentJobInfo, which is broadcast over SSE — and handed to
-     *  onJobComplete for persistence beside the guide (portable export). */
     launchReview?: GuideLaunchReview;
-  } | null>;
-  /**
-   * Called after a job process exits with exit code 0.
-   * Use for result ingestion (e.g., reading an output file and pushing annotations).
-   */
-  onJobComplete?: (job: AgentJobInfo, meta: { outputPath?: string; stdout?: string; cwd?: string; changedFilesSnapshot?: string[]; launchReview?: GuideLaunchReview }) => void | Promise<void>;
+  }) => Promise<void>;
 }
 
+const ROOT = "/api/agents";
+const JOBS = `${ROOT}/jobs`;
+const LAUNCH_KEYS = new Set(["provider", "label", "reviewProfileId", "repairOf", "instructions", "serverSession"]);
 
-/**
- * Where `name` is on the live `process.env.PATH`, which the job spawn inherits.
- * (`Bun.which` without the option consults the PATH captured at process start.)
- */
-const whichOnPath = (name: string): string | null => Bun.which(name, { PATH: process.env.PATH }) ?? null;
-
-/** The marker engine a job runs: its provider's, or the one a guide job carries. */
-function jobMarkerEngine(provider: string, engine: string | undefined): MarkerEngine | undefined {
-  return MARKER_ENGINES[provider as MarkerEngineId] ?? (engine ? MARKER_ENGINES[engine as MarkerEngineId] : undefined);
-}
-
-/**
- * Best-effort model catalog for a marker engine, spawned once. The spawn lives
- * HERE (per-runtime — Bun.spawn) rather than in marker-review.ts, which must stay
- * Bun-free for the Pi vendor build. ASYNC so it never blocks the event loop on
- * the /capabilities request path (a slow/hanging CLI would otherwise freeze every
- * other in-flight request for up to the timeout). Empty when discovery fails or
- * the CLI is unauthenticated / has no providers configured — the UI falls back to
- * the engine's default picker. Account/config-specific, so never hardcoded.
- */
-async function discoverMarkerModels(engine: MarkerEngine, program: string): Promise<MarkerModel[]> {
-  try {
-    // A Windows .cmd shim starts through cmd.exe, as a job does (#2372).
-    const launch = planAgentJobSpawn([program, ...engine.modelsArgv], { which: whichOnPath });
-    if (launch.unsafeScript) return [];
-    const proc = Bun.spawn(launch.command, {
-      windowsVerbatimArguments: launch.verbatim,
-      env: childEnv(),
-      stdout: "pipe",
-      stderr: "ignore",
-      windowsHide: true,
-    });
-    // Out of time: through cmd.exe the whole tree ends, not cmd.exe alone.
-    const timer = setTimeout(() => {
-      try {
-        if (!launch.verbatim || !killWindowsProcessTree(proc.pid)) proc.kill();
-      } catch {
-        // Already gone.
-      }
-    }, 5000);
-    try {
-      const stdout = await new Response(proc.stdout).text();
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) return [];
-      return engine.parseModels(stdout);
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return [];
-  }
-}
-
-export function createAgentJobHandler(options: AgentJobHandlerOptions): AgentJobHandler {
-  const { mode, getServerUrl, getCwd } = options;
-
-  // --- State ---
-  // `tree`: the job runs through cmd.exe (a Windows .cmd shim), so Stop ends
-  // the whole process tree, not cmd.exe alone (#2372).
-  const jobs = new Map<string, { info: AgentJobInfo; proc: ReturnType<typeof Bun.spawn> | null; tree?: boolean }>();
-  const jobOutputPaths = new Map<string, string>();
-  const jobChangedFilesSnapshots = new Map<string, string[]>();
-  const jobLaunchReviews = new Map<string, GuideLaunchReview>();
-  const subscribers = new Set<ReadableStreamDefaultController>();
+export function createAgentJobHandler(options: AgentJobHandlerOptions) {
+  const jobs = new Map<string, { info: AgentJobInfo; abort: AbortController; completing?: boolean }>();
+  const subscribers = new Map<ReadableStreamDefaultController<Uint8Array>, ReturnType<typeof setInterval>>();
   const encoder = new TextEncoder();
   let version = 0;
+  let closed = false;
 
-  // --- Capability detection: binaries are probed once at construction; marker
-  // model catalogs are discovered LAZILY (see buildCapabilitiesResponse) so a
-  // slow/unauthenticated `<binary> models` spawn never blocks review-server
-  // startup — it runs at most once, on the first /capabilities request. ---
-  // Resolved against the live `process.env.PATH`, which is also what the job
-  // spawn inherits, so detection and execution agree. (`Bun.which` without the
-  // option consults the PATH captured at process start.)
-  const onPath = (binary: string): boolean => !!Bun.which(binary, { PATH: process.env.PATH });
-  // A marker engine's CLI by its own name, or another name it is installed
-  // under only when that is the same CLI (Cursor's `agent`, never another
-  // program named `agent`, such as Grok Build's).
-  // The check of a second name may run its `--version` (asynchronously, 2 s at
-  // most, once per file), so marker availability settles a moment after
-  // construction: every reader awaits `capabilitiesReady`.
-  const markerBinary = (engine: MarkerEngine) => resolveMarkerBinary(engine, (name) => Bun.which(name, { PATH: process.env.PATH }) ?? null);
-  const capabilities: AgentCapability[] = [
-    { id: "claude", name: "Claude Code", available: onPath("claude") },
-    { id: "codex", name: "Codex CLI", available: onPath("codex") },
-    {
-      id: "guide",
-      name: "Guided Review",
-      // Guided Review also runs on the marker engines (Cursor, OpenCode, Pi) —
-      // same review-mode + binary-on-PATH gating as their own capability
-      // entries below (Cursor: `cursor-agent`, or Cursor's own `agent`).
-      available: onPath("claude") || onPath("codex"),
-    },
-  ];
-  // Marker engines (Cursor, OpenCode, Pi) — same shape, one loop. Available only
-  // in review mode when the binary is on PATH (Cursor: `cursor-agent`, or
-  // Cursor's own `agent`).
-  for (const engine of Object.values(MARKER_ENGINES)) {
-    capabilities.push({ id: engine.id, name: engine.name, available: false });
-  }
-  const capabilitiesReady: Promise<void> = mode !== "review"
-    ? Promise.resolve()
-    : Promise.all(Object.values(MARKER_ENGINES).map(async (engine) => {
-        const found = await markerBinary(engine).catch(() => null);
-        if (!found) return;
-        for (const c of capabilities) if (c.id === engine.id || c.id === "guide") c.available = true;
-      })).then(() => undefined);
+  const snapshots = () => Array.from(jobs.values(), ({ info }) => ({ ...info }));
+  const frame = (event: AgentJobEvent) => encoder.encode(serializeAgentSSEEvent(event));
 
-  const markerModelsCache = new Map<string, MarkerModel[]>();
-  async function buildCapabilitiesResponse(): Promise<AgentCapabilities> {
-    await capabilitiesReady;
-    const providers = await Promise.all(capabilities.map(async (c) => {
-      const engine = MARKER_ENGINES[c.id as MarkerEngineId];
-      if (!engine || !c.available) return c;
-      let models = markerModelsCache.get(engine.id);
-      if (!models) {
-        const program = await markerBinary(engine);
-        models = program ? await discoverMarkerModels(engine, program.name) : [];
-        markerModelsCache.set(engine.id, models);
-      }
-      return { ...c, models };
-    }));
-    return { mode, providers, available: providers.some((p) => p.available) };
+  function unsubscribe(controller: ReadableStreamDefaultController<Uint8Array>) {
+    clearInterval(subscribers.get(controller));
+    subscribers.delete(controller);
   }
 
-  // --- SSE broadcasting ---
-  function broadcast(event: AgentJobEvent): void {
+  function broadcast(event: AgentJobEvent) {
     version++;
-    const data = encoder.encode(serializeAgentSSEEvent(event));
-    for (const controller of subscribers) {
-      try {
-        controller.enqueue(data);
-      } catch {
-        subscribers.delete(controller);
-      }
+    const data = frame(event);
+    for (const controller of subscribers.keys()) {
+      try { controller.enqueue(data); } catch { unsubscribe(controller); }
     }
   }
 
-  // --- Process lifecycle ---
-  function spawnJob(
-    id: string,
-    provider: string,
-    command: string[],
-    label: string,
-    outputPath?: string,
-    spawnOptions?: { captureStdout?: boolean; stdinPrompt?: string; cwd?: string; prompt?: string; engine?: string; model?: string; effort?: string; reasoningEffort?: string; fastMode?: boolean; thinking?: string; prUrl?: string; diffScope?: string; diffContext?: AgentJobInfo["diffContext"]; reviewProfileId?: string; reviewProfileLabel?: string; launchLabel?: string; changedFilesSnapshot?: string[]; guideContext?: AgentJobInfo["guideContext"]; launchReview?: GuideLaunchReview },
-  ): AgentJobInfo {
-    const source = jobSource(id);
-
-    const info: AgentJobInfo = {
-      id,
-      source,
-      provider,
-      label,
-      status: "starting",
-      startedAt: Date.now(),
-      command,
-      cwd: getCwd(),
-      ...(spawnOptions?.engine && { engine: spawnOptions.engine }),
-      ...(spawnOptions?.model && { model: spawnOptions.model }),
-      ...(spawnOptions?.effort && { effort: spawnOptions.effort }),
-      ...(spawnOptions?.reasoningEffort && { reasoningEffort: spawnOptions.reasoningEffort }),
-      ...(spawnOptions?.fastMode && { fastMode: spawnOptions.fastMode }),
-      ...(spawnOptions?.thinking && { thinking: spawnOptions.thinking }),
-      ...(spawnOptions?.prUrl && { prUrl: spawnOptions.prUrl }),
-      ...(spawnOptions?.diffScope && { diffScope: spawnOptions.diffScope }),
-      ...(spawnOptions?.diffContext && { diffContext: spawnOptions.diffContext }),
-      ...(spawnOptions?.guideContext && { guideContext: spawnOptions.guideContext }),
-      ...(spawnOptions?.reviewProfileId && { reviewProfileId: spawnOptions.reviewProfileId }),
-      ...(spawnOptions?.reviewProfileLabel && { reviewProfileLabel: spawnOptions.reviewProfileLabel }),
-      ...(spawnOptions?.launchLabel && { launchLabel: spawnOptions.launchLabel }),
-    };
-
-    let proc: ReturnType<typeof Bun.spawn> | null = null;
-
-    try {
-      const spawnCwd = spawnOptions?.cwd ?? getCwd();
-      const captureStdout = spawnOptions?.captureStdout ?? false;
-
-      // On Windows a CLI installed as a .cmd shim (Pi's pi.cmd) starts
-      // through cmd.exe, as Ask AI starts it (#2372). A job whose arguments
-      // cmd.exe would misread (`unsafeScript`) is refused, never started
-      // with them. Elsewhere this is the command as built.
-      const launch = planAgentJobSpawn(command, {
-        which: whichOnPath,
-        stdinPrompt: spawnOptions?.stdinPrompt,
-        promptOnStdin: jobMarkerEngine(provider, spawnOptions?.engine)?.promptOnStdin,
-      });
-      if (launch.unsafeScript) throw new Error(launch.unsafeScript);
-      const stdinPrompt = launch.stdinPrompt;
-      const hasStdinPrompt = !!stdinPrompt;
-
-      proc = Bun.spawn(launch.command, {
-        cwd: spawnCwd,
-        windowsVerbatimArguments: launch.verbatim,
-        windowsHide: true,
-        stdin: hasStdinPrompt ? "pipe" : undefined,
-        stdout: captureStdout ? "pipe" : "ignore",
-        stderr: "pipe",
-        env: {
-          // The live env with Plannotator's own integration off (the Inbox MCP,
-          // the agent tool, the plan and Stop hooks). No job uses it: each
-          // returns its result on stdout or in its output file (ask-ai-env.ts).
-          ...askAiChildEnv(),
-          // The agent runs `git diff` / `git log` itself through a pipe; keep a
-          // user's `color.diff = always` from filling its context with ANSI
-          // escapes (#1661).
-          ...gitColorFreeEnvironment(process.env),
-          // PWD must name the spawn cwd, not the server's own directory (#1609):
-          // OpenCode 1.x resolves its session directory as `process.env.PWD ??
-          // process.cwd()`, so an inherited PWD would silently run the agent in
-          // the server's directory instead of the review's (PR pool checkouts,
-          // worktrees, workspace roots). A shell sets PWD to its cwd; so do we.
-          PWD: resolvePath(spawnCwd),
-          PLANNOTATOR_AGENT_SOURCE: source,
-          PLANNOTATOR_API_URL: getServerUrl(),
-        },
-      });
-
-      // Write prompt to stdin and close (for providers that read prompt from stdin)
-      if (hasStdinPrompt && proc.stdin) {
-        const sink = proc.stdin as import("bun").FileSink;
-        // A child that exits before reading its prompt (EPIPE) must not take
-        // the server down; the job's exit reports it.
-        const ignore = (result: unknown) => {
-          if (result instanceof Promise) result.catch(() => {});
-        };
-        try {
-          ignore(sink.write(stdinPrompt!));
-          ignore(sink.end());
-        } catch {
-          // The pipe is already closed.
-        }
-      }
-
-      info.status = "running";
-      info.cwd = spawnCwd;
-      if (spawnOptions?.prompt) info.prompt = spawnOptions.prompt;
-      jobs.set(id, { info, proc, tree: launch.verbatim });
-      if (outputPath) jobOutputPaths.set(id, outputPath);
-      if (spawnOptions?.cwd) jobOutputPaths.set(`${id}:cwd`, spawnOptions.cwd);
-      if (spawnOptions?.changedFilesSnapshot) jobChangedFilesSnapshots.set(id, spawnOptions.changedFilesSnapshot);
-      if (spawnOptions?.launchReview) jobLaunchReviews.set(id, spawnOptions.launchReview);
-      broadcast({ type: "job:started", job: { ...info } });
-
-      // Drain stderr: capture tail for error reporting + broadcast live log deltas
-      let stderrBuf = "";
-      let logPending = "";
-      let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
-
-      if (proc.stderr && typeof proc.stderr !== "number") {
-        (async () => {
-          try {
-            const reader = proc!.stderr as unknown as AsyncIterable<Uint8Array>;
-            for await (const chunk of reader) {
-              const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-              stderrBuf = (stderrBuf + text).slice(-500);
-              logPending += text;
-
-              if (!logFlushTimer) {
-                logFlushTimer = setTimeout(() => {
-                  if (logPending) {
-                    broadcast({ type: "job:log", jobId: id, delta: logPending });
-                    logPending = "";
-                  }
-                  logFlushTimer = null;
-                }, 200);
-              }
-            }
-            // Flush remaining on stream close
-            if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
-            if (logPending) {
-              broadcast({ type: "job:log", jobId: id, delta: logPending });
-              logPending = "";
-            }
-          } catch {
-            // Stream closed or already consumed
-          }
-        })();
-      }
-
-      // Drain stdout when capturing (for providers that return results on stdout)
-      let stdoutBuf = "";
-      const stdoutDone = (captureStdout && proc.stdout && typeof proc.stdout !== "number")
-        ? (async () => {
-            // Format one complete JSONL line into a live-log delta (skip result
-            // events — those are handled in onJobComplete).
-            const emitLogLine = (line: string) => {
-              if (!line.trim()) return;
-              // Claude: format JSONL into readable text. Guide jobs with the
-              // Claude engine also stream Claude JSONL, so key off engine too.
-              if (provider === "claude" || spawnOptions?.engine === "claude") {
-                const formatted = formatClaudeLogEvent(line);
-                if (formatted !== null) broadcast({ type: "job:log", jobId: id, delta: formatted + '\n' });
-                return;
-              }
-              // Marker engines (Cursor, OpenCode, Pi): map their NDJSON stream events
-              // into readable log deltas via the engine's own formatter (Cursor
-              // applies the partial-output dedup rule; OpenCode reads text parts;
-              // Pi reads message_end/tool_execution_start).
-              // Guide jobs keep provider: "guide" and carry the marker engine on
-              // spawnOptions.engine instead — fall back to that lookup so guide
-              // logs get the same readable formatting as review jobs.
-              const markerEngine = MARKER_ENGINES[provider as MarkerEngineId]
-                ?? (spawnOptions?.engine ? MARKER_ENGINES[spawnOptions.engine as MarkerEngineId] : undefined);
-              if (markerEngine) {
-                const formatted = formatMarkerLogEvent(line, markerEngine);
-                if (formatted !== null) broadcast({ type: "job:log", jobId: id, delta: formatted + '\n' });
-                return;
-              }
-              try {
-                const event = JSON.parse(line);
-                if (event.type === 'result') return;
-              } catch { /* not JSON — forward as raw log */ }
-              broadcast({ type: "job:log", jobId: id, delta: line + '\n' });
-            };
-            try {
-              const reader = proc!.stdout as unknown as AsyncIterable<Uint8Array>;
-              // stream-json output is NDJSON and chunk boundaries are arbitrary —
-              // carry the trailing partial line until a later chunk completes it,
-              // otherwise records split across chunks are dropped from live logs.
-              let logLineCarry = "";
-              for await (const chunk of reader) {
-                const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-                stdoutBuf += text;
-                const lines = (logLineCarry + text).split('\n');
-                logLineCarry = lines.pop() ?? "";
-                for (const line of lines) emitLogLine(line);
-              }
-              if (logLineCarry) emitLogLine(logLineCarry);
-            } catch {
-              // Stream closed
-            }
-          })()
-        : Promise.resolve();
-
-      // Monitor process exit
-      proc.exited.then(async (exitCode) => {
-        // Wait for stdout to drain — grace period in case the pipe doesn't close cleanly.
-        // The process is dead; if the stream hasn't flushed in 2s, the runtime has a bug.
-        await Promise.race([stdoutDone, new Promise(r => setTimeout(r, 2000))]);
-        const entry = jobs.get(id);
-        if (!entry || isTerminalStatus(entry.info.status)) return;
-
-        entry.info.endedAt = Date.now();
-        entry.info.exitCode = exitCode;
-        entry.info.status = exitCode === 0 ? "done" : "failed";
-
-        if (exitCode !== 0 && stderrBuf) {
-          entry.info.error = stderrBuf;
-        }
-
-        // #1627: a Claude job whose every shell command was refused (sandbox that
-        // cannot start, under dontAsk) otherwise finishes looking normal.
-        if (captureStdout && (provider === "claude" || spawnOptions?.engine === "claude") && detectClaudeShellBlocked(stdoutBuf, allowedToolsOf(entry.info.command), disallowedToolsOf(entry.info.command))) {
-          entry.info.warning = CLAUDE_SHELL_BLOCKED_WARNING;
-        }
-
-        // Ingest results before broadcasting completion so annotations arrive first
-        const outputPath = jobOutputPaths.get(id);
-        const jobCwd = jobOutputPaths.get(`${id}:cwd`);
-        const changedFilesSnapshot = jobChangedFilesSnapshots.get(id);
-        const launchReview = jobLaunchReviews.get(id);
-        if (exitCode === 0 && options.onJobComplete) {
-          try {
-            await options.onJobComplete(entry.info, {
-              outputPath,
-              stdout: captureStdout ? stdoutBuf : undefined,
-              cwd: jobCwd,
-              changedFilesSnapshot,
-              launchReview,
-            });
-          } catch (err) {
-            // Claude/Codex REVIEW jobs stay fail-open by design: annotations
-            // may already be partially ingested by the time something throws,
-            // and flipping the job to "failed" would hide a review the user
-            // can otherwise still see/use. Cursor, OpenCode, and Pi are
-            // fail-closed — their findings are prompt-enforced, so an unexpected
-            // throw here must surface as a failed job rather than a green one.
-            // (Their handlers normally fail by mutation and never throw; this
-            // guards future refactors.) Guide widens that fail-closed
-            // rule too: it is a single-shot, all-or-nothing output (a guide's
-            // sections) with nothing meaningful partially ingested, so an unexpected throw here means the whole
-            // result is unusable — it must not sit at "done" with no content.
-            if (MARKER_ENGINES[provider as MarkerEngineId]) {
-              entry.info.status = "failed";
-              entry.info.error = err instanceof Error ? err.message : `${provider} result ingestion failed`;
-            } else if (provider === "guide") {
-              entry.info.status = "failed";
-              entry.info.error = `Result ingestion failed: ${err instanceof Error ? err.message : String(err)}`;
-            }
-          }
-        }
-        jobOutputPaths.delete(id);
-        jobOutputPaths.delete(`${id}:cwd`);
-        jobChangedFilesSnapshots.delete(id);
-        jobLaunchReviews.delete(id);
-        broadcast({ type: "job:completed", job: { ...entry.info } });
-      }).catch(() => {
-        // Guard against unhandled rejection from unexpected runtime errors
-      });
-    } catch (err) {
-      // Spawn itself failed (e.g., command not found).
-      // Broadcast started (so hook adds the job), then completed (so it updates to failed).
-      jobs.set(id, { info, proc: null });
-      broadcast({ type: "job:started", job: { ...info } });
-
-      info.status = "failed";
-      info.endedAt = Date.now();
-      info.error = err instanceof Error ? err.message : String(err);
-      broadcast({ type: "job:completed", job: { ...info } });
-    }
-
-    return { ...info };
-  }
-
-  function killJob(id: string): boolean {
+  function kill(id: string): boolean {
     const entry = jobs.get(id);
-    if (!entry || isTerminalStatus(entry.info.status)) return false;
-
-    if (entry.proc) {
-      try {
-        if (!entry.tree || !killWindowsProcessTree(entry.proc.pid)) entry.proc.kill();
-      } catch {
-        // Process may have already exited
-      }
-    }
-
+    if (!entry || entry.completing || isTerminalStatus(entry.info.status)) return false;
+    entry.abort.abort();
     entry.info.status = "killed";
     entry.info.endedAt = Date.now();
-    jobOutputPaths.delete(id);
-    jobOutputPaths.delete(`${id}:cwd`);
-    jobChangedFilesSnapshots.delete(id);
-    jobLaunchReviews.delete(id);
     broadcast({ type: "job:completed", job: { ...entry.info } });
     return true;
   }
 
   function killAll(): number {
     let count = 0;
-    for (const [id, entry] of jobs) {
-      if (!isTerminalStatus(entry.info.status)) {
-        killJob(id);
-        count++;
-      }
-    }
+    for (const id of jobs.keys()) if (kill(id)) count++;
     return count;
   }
 
-  function getAllJobs(): AgentJobInfo[] {
-    return Array.from(jobs.values()).map((e) => ({ ...e.info }));
-  }
-
-  function getJob(id: string): AgentJobInfo | undefined {
-    const entry = jobs.get(id);
-    return entry ? { ...entry.info } : undefined;
-  }
-
-  function completeJobExternally(id: string, summary: AgentJobInfo["summary"]): boolean {
-    const entry = jobs.get(id);
-    if (!entry) return false;
-    if (entry.info.status !== "failed" && entry.info.status !== "killed") return false;
-
-    entry.info.status = "done";
-    entry.info.error = undefined;
-    entry.info.summary = summary;
-    // The FAILED run's exit code would otherwise survive the manual repair —
-    // the job detail UI keys its "Exit N" chip off it, so a successfully
-    // repaired guide kept flagging Exit 1. The job's OUTCOME is now success;
-    // the original process's exit lives on in the captured logs.
-    entry.info.exitCode = 0;
-    broadcast({ type: "job:completed", job: { ...entry.info } });
-    return true;
-  }
-
-  // --- HTTP handler ---
   return {
     killAll,
-    getJob,
-    completeJobExternally,
-
-    async handle(
-      req: Request,
-      url: URL,
-      handlerOptions?: { disableIdleTimeout?: () => void },
-    ): Promise<Response | null> {
-      // --- GET /api/agents/capabilities ---
-      if (url.pathname === CAPABILITIES && req.method === "GET") {
-        return Response.json(await buildCapabilitiesResponse());
+    dispose() {
+      closed = true;
+      killAll();
+      for (const controller of subscribers.keys()) {
+        unsubscribe(controller);
+        try { controller.close(); } catch { /* Already closed. */ }
       }
-
-      // Launching and killing jobs start and stop processes on this machine:
-      // another site's page is refused (the servers also do this before any
-      // route; repeated so the handler is safe wherever it is mounted), and a
-      // kill from a stale tab too. A launch's session is checked on its body.
-      if ((url.pathname === JOBS || url.pathname.startsWith(JOBS + "/")) && (req.method === "POST" || req.method === "DELETE")) {
-        if (!isSameOriginRequest(req)) {
-          return Response.json(crossOriginRefusalBody(), { status: 403 });
-        }
-        if (
-          req.method === "DELETE" &&
-          options.serverSession !== undefined &&
-          checkServerSession({ serverSession: url.searchParams.get("serverSession") ?? undefined }, options.serverSession) === "mismatch"
-        ) {
-          return Response.json(serverSessionMismatchBody(), { status: 409 });
-        }
+    },
+    getJob(id: string): AgentJobInfo | undefined {
+      const entry = jobs.get(id);
+      return entry ? { ...entry.info } : undefined;
+    },
+    completeJobExternally(id: string, summary: AgentJobInfo["summary"]): boolean {
+      const info = jobs.get(id)?.info;
+      if (!info || (info.status !== "failed" && info.status !== "killed")) return false;
+      Object.assign(info, { status: "done", exitCode: 0, summary, error: undefined });
+      broadcast({ type: "job:completed", job: { ...info } });
+      return true;
+    },
+    async handle(req: Request, url: URL, handler?: { disableIdleTimeout?: () => void }): Promise<Response | null> {
+      if (url.pathname === `${ROOT}/capabilities` && req.method === "GET") {
+        const available = !!options.generate;
+        return Response.json({
+          mode: "review",
+          available,
+          providers: available ? [
+            { id: "opencode", name: "OpenCode", available },
+            { id: "guide", name: "Guided Review", available },
+          ] : [],
+        } satisfies AgentCapabilities);
       }
-
-      // --- SSE stream ---
-      if (url.pathname === JOBS_STREAM && req.method === "GET") {
-        handlerOptions?.disableIdleTimeout?.();
-
-        let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-        let ctrl: ReadableStreamDefaultController;
-
-        const stream = new ReadableStream({
+      if (url.pathname === `${JOBS}/stream` && req.method === "GET") {
+        handler?.disableIdleTimeout?.();
+        let ctrl: ReadableStreamDefaultController<Uint8Array>;
+        const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             ctrl = controller;
-
-            // Send current state as snapshot
-            const snapshot: AgentJobEvent = {
-              type: "snapshot",
-              jobs: getAllJobs(),
-            };
-            controller.enqueue(encoder.encode(serializeAgentSSEEvent(snapshot)));
-
-            subscribers.add(controller);
-
-            // Heartbeat to keep connection alive
-            heartbeatTimer = setInterval(() => {
-              try {
-                controller.enqueue(encoder.encode(AGENT_HEARTBEAT_COMMENT));
-              } catch {
-                if (heartbeatTimer) clearInterval(heartbeatTimer);
-                subscribers.delete(controller);
-              }
-            }, AGENT_HEARTBEAT_INTERVAL_MS);
+            controller.enqueue(frame({ type: "snapshot", jobs: snapshots() }));
+            subscribers.set(controller, setInterval(() => {
+              try { controller.enqueue(encoder.encode(AGENT_HEARTBEAT_COMMENT)); }
+              catch { unsubscribe(controller); }
+            }, AGENT_HEARTBEAT_INTERVAL_MS));
           },
-          cancel() {
-            if (heartbeatTimer) clearInterval(heartbeatTimer);
-            subscribers.delete(ctrl);
-          },
+          cancel: () => unsubscribe(ctrl),
         });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          },
-        });
+        return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
       }
-
-      // --- GET /api/agents/jobs (snapshot / polling fallback) ---
       if (url.pathname === JOBS && req.method === "GET") {
         const since = url.searchParams.get("since");
-        if (since !== null) {
-          const sinceVersion = parseInt(since, 10);
-          if (!isNaN(sinceVersion) && sinceVersion === version) {
-            return new Response(null, { status: 304 });
-          }
-        }
-        return Response.json({ jobs: getAllJobs(), version });
+        if (since !== null && Number(since) === version) return new Response(null, { status: 304 });
+        return Response.json({ jobs: snapshots(), version });
       }
-
-      // --- POST /api/agents/jobs (launch) ---
-      if (url.pathname === JOBS && req.method === "POST") {
+      if (!isSameOriginRequest(req) && (url.pathname === JOBS || url.pathname.startsWith(`${JOBS}/`))) {
+        return Response.json(crossOriginRefusalBody(), { status: 403 });
+      }
+      if (req.method === "DELETE" && (url.pathname === JOBS || url.pathname.startsWith(`${JOBS}/`))) {
+        if (checkServerSession({ serverSession: url.searchParams.get("serverSession") ?? undefined }, options.serverSession) === "mismatch") {
+          return Response.json(serverSessionMismatchBody(), { status: 409 });
+        }
+        if (url.pathname === JOBS) return Response.json({ ok: true, killed: killAll() });
+        const ok = kill(url.pathname.slice(JOBS.length + 1));
+        return ok ? Response.json({ ok }) : Response.json({ error: "Job not found or already terminal" }, { status: 404 });
+      }
+      if (url.pathname !== JOBS || req.method !== "POST") return null;
+      if (!options.generate || closed) return Response.json({ error: "OpenCode V2 is unavailable." }, { status: 503 });
+      const generate = options.generate;
+      let body: Record<string, unknown>;
+      try {
+        const json: unknown = await req.json();
+        if (typeof json !== "object" || !json || Array.isArray(json)) throw new Error();
+        body = json as Record<string, unknown>;
+      } catch {
+        return Response.json({ error: "Invalid job request." }, { status: 400 });
+      }
+      if (checkServerSession(body, options.serverSession) === "mismatch") {
+        return Response.json(serverSessionMismatchBody(), { status: 409 });
+      }
+      const kind = body.provider;
+      if ((kind !== "opencode" && kind !== "guide") || Object.keys(body).some(key => !LAUNCH_KEYS.has(key))) {
+        return Response.json({ error: "Only server-configured OpenCode review jobs are supported." }, { status: 400 });
+      }
+      let launch: JobLaunch;
+      try {
+        launch = await options.prepare(kind, {
+          reviewProfileId: typeof body.reviewProfileId === "string" ? body.reviewProfileId : undefined,
+          repairOf: typeof body.repairOf === "string" ? body.repairOf : undefined,
+          instructions: kind === "guide" ? resolveGuideLaunchInstructions(body.instructions) : undefined,
+        });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Could not prepare review." }, { status: 503 });
+      }
+      if (closed) return Response.json({ error: "Review closed." }, { status: 503 });
+      const id = crypto.randomUUID();
+      const { cwd, label, diffContext, guideContext, reviewProfileId, reviewProfileLabel } = launch;
+      const info: AgentJobInfo = {
+        id, source: jobSource(id), provider: kind, engine: "opencode", label, cwd, command: [],
+        status: "running", startedAt: Date.now(), launchLabel: launchLabelOf(body.label, label),
+        diffContext, guideContext, reviewProfileId, reviewProfileLabel,
+      };
+      const abort = new AbortController();
+      const entry: { info: AgentJobInfo; abort: AbortController; completing?: boolean } = { info, abort };
+      jobs.set(id, entry);
+      broadcast({ type: "job:started", job: { ...info } });
+      void (async () => {
         try {
-          const body = await req.json();
-
-          // Reject unknown fields rather than silently ignoring them (per the
-          // custom-reviews spec — a typo'd field should fail loud, not no-op).
-          const KNOWN_JOB_FIELDS = new Set([
-            "provider", "command", "label",
-            "engine", "model", "reasoningEffort", "effort", "thinking", "fastMode",
-            "reviewProfileId", "repairOf", "instructions",
-            "serverSession",
-          ]);
-          if (options.serverSession !== undefined && checkServerSession(body, options.serverSession) === "mismatch") {
-            return Response.json(serverSessionMismatchBody(), { status: 409 });
-          }
-          if (body && typeof body === "object") {
-            const unknown = Object.keys(body).filter((k) => !KNOWN_JOB_FIELDS.has(k));
-            if (unknown.length > 0) {
-              return Response.json(
-                { error: `Unknown field(s): ${unknown.join(", ")}` },
-                { status: 400 },
-              );
-            }
-          }
-
-          const provider = typeof body.provider === "string" ? body.provider : "";
-          let rawCommand = Array.isArray(body.command) ? body.command : [];
-          let command = rawCommand.filter((c: unknown): c is string => typeof c === "string");
-          let label = typeof body.label === "string" ? body.label : `${provider} agent`;
-          let outputPath: string | undefined;
-
-          // Validate provider is a known, available capability
-          await capabilitiesReady;
-          const cap = capabilities.find((c) => c.id === provider);
-          if (!cap || !cap.available) {
-            return Response.json(
-              { error: `Unknown or unavailable provider: ${provider}` },
-              { status: 400 },
-            );
-          }
-
-          // Fail-closed enforcement for server-owned providers: the command MUST
-          // be built server-side. Client-supplied argv is never spawned for these
-          // providers — a null/throwing builder becomes an error, not a fallback.
-          const isServerBuiltProvider = SERVER_BUILT_PROVIDERS.has(provider);
-          if (isServerBuiltProvider) {
-            if (!options.buildCommand) {
-              return Response.json(
-                { error: `Provider ${provider} requires server-built command` },
-                { status: 400 },
-              );
-            }
-            // Discard any client-supplied argv so a null build cleanly hits the
-            // `command.length === 0` guard below instead of falling through.
-            command = [];
-          }
-
-          // Try server-side command building for known providers
-          let captureStdout = false;
-          let stdinPrompt: string | undefined;
-          let spawnCwd: string | undefined;
-          let promptText: string | undefined;
-          let jobEngine: string | undefined;
-          let jobModel: string | undefined;
-          let jobEffort: string | undefined;
-          let jobReasoningEffort: string | undefined;
-          let jobFastMode: boolean | undefined;
-          let jobThinking: string | undefined;
-          let jobPrUrl: string | undefined;
-          let jobDiffScope: string | undefined;
-          let jobDiffContext: AgentJobInfo["diffContext"] | undefined;
-          let jobReviewProfileId: string | undefined;
-          let jobReviewProfileLabel: string | undefined;
-          let jobChangedFilesSnapshot: string[] | undefined;
-          let jobGuideContext: AgentJobInfo["guideContext"] | undefined;
-          let jobLaunchReview: GuideLaunchReview | undefined;
-          const jobId = crypto.randomUUID();
-          if (options.buildCommand) {
-            // Thread config from POST body to buildCommand
-            const config: Record<string, unknown> = {};
-            if (typeof body.engine === "string") config.engine = body.engine;
-            if (typeof body.model === "string") config.model = body.model;
-            if (typeof body.reasoningEffort === "string") config.reasoningEffort = body.reasoningEffort;
-            if (typeof body.effort === "string") config.effort = body.effort;
-            if (typeof body.thinking === "string") config.thinking = body.thinking;
-            if (body.fastMode === true) config.fastMode = true;
-            if (typeof body.reviewProfileId === "string") config.reviewProfileId = body.reviewProfileId;
-            if (typeof body.repairOf === "string") config.repairOf = body.repairOf;
-            // Guide extra instructions (#1265): explicit launch text wins,
-            // else the server-stored standing instructions apply; neither
-            // yields text and launches build the exact same prompts as before.
-            const launchInstructions = provider === "guide"
-              ? resolveGuideLaunchInstructions(body.instructions)
-              : undefined;
-            if (launchInstructions !== undefined) config.instructions = launchInstructions;
-            const built = await options.buildCommand(provider, Object.keys(config).length > 0 ? config : undefined);
-            if (built) {
-              command = built.command;
-              outputPath = built.outputPath;
-              captureStdout = built.captureStdout ?? false;
-              stdinPrompt = built.stdinPrompt;
-              spawnCwd = built.cwd;
-              promptText = built.prompt;
-              if (built.label) label = built.label;
-              jobEngine = built.engine;
-              jobModel = built.model;
-              jobEffort = built.effort;
-              jobReasoningEffort = built.reasoningEffort;
-              jobFastMode = built.fastMode;
-              jobThinking = built.thinking;
-              jobPrUrl = built.prUrl;
-              jobDiffScope = built.diffScope;
-              jobDiffContext = built.diffContext;
-              jobReviewProfileId = built.reviewProfileId;
-              jobReviewProfileLabel = built.reviewProfileLabel;
-              jobChangedFilesSnapshot = built.changedFilesSnapshot;
-              jobGuideContext = built.guideContext;
-              jobLaunchReview = built.launchReview;
-            }
-          }
-
-          if (command.length === 0) {
-            return Response.json(
-              { error: 'Missing "command" array' },
-              { status: 400 },
-            );
-          }
-
-          // A marker engine starts by the name its CLI was found under
-          // (Cursor's `agent` only when it is Cursor's), never another
-          // program of that name. Guide jobs carry the engine on jobEngine.
-          const spawnEngine = MARKER_ENGINES[provider as MarkerEngineId]
-            ?? (jobEngine ? MARKER_ENGINES[jobEngine as MarkerEngineId] : undefined);
-          if (spawnEngine) command = withMarkerBinary(command, spawnEngine, await markerBinary(spawnEngine));
-
-          const job = spawnJob(jobId, provider, command, label, outputPath, {
-            captureStdout,
-            stdinPrompt,
-            cwd: spawnCwd,
-            prompt: promptText,
-            engine: jobEngine,
-            model: jobModel,
-            effort: jobEffort,
-            reasoningEffort: jobReasoningEffort,
-            fastMode: jobFastMode,
-            thinking: jobThinking,
-            prUrl: jobPrUrl,
-            diffScope: jobDiffScope,
-            diffContext: jobDiffContext,
-            reviewProfileId: jobReviewProfileId,
-            reviewProfileLabel: jobReviewProfileLabel,
-            launchLabel: launchLabelOf(body.label, label),
-            changedFilesSnapshot: jobChangedFilesSnapshot,
-            guideContext: jobGuideContext,
-            launchReview: jobLaunchReview,
+          const text = await generate(launch.prompt, cwd, abort.signal);
+          if (abort.signal.aborted) return;
+          entry.completing = true;
+          // Prompt and review contents stay server-side; the parser needs the nonce.
+          const completed = { ...info, prompt: launch.prompt };
+          await options.onJobComplete(completed, {
+            text, cwd, changedFilesSnapshot: launch.changedFilesSnapshot, launchReview: launch.launchReview,
           });
-          return Response.json({ job }, { status: 201 });
-        } catch (err) {
-          // buildCommand can refuse a launch (e.g. PR checkout unavailable) —
-          // surface its message instead of mislabeling it a JSON error.
-          if (err instanceof SyntaxError) {
-            return Response.json({ error: "Invalid JSON" }, { status: 400 });
-          }
-          const message = err instanceof Error ? err.message : "Failed to launch agent";
-          return Response.json({ error: message }, { status: 503 });
+          if (abort.signal.aborted) return;
+          info.status = completed.status === "running" ? "done" : completed.status;
+          info.summary = completed.summary;
+          info.error = completed.error;
+        } catch (error) {
+          if (abort.signal.aborted) return;
+          info.status = "failed";
+          info.error = error instanceof Error ? error.message : "OpenCode review failed.";
         }
-      }
-
-      // --- DELETE /api/agents/jobs/:id (kill one) ---
-      if (url.pathname.startsWith(JOBS + "/") && url.pathname !== JOBS_STREAM && req.method === "DELETE") {
-        const id = url.pathname.slice(JOBS.length + 1);
-        if (!id) {
-          return Response.json({ error: "Missing job ID" }, { status: 400 });
-        }
-        const found = killJob(id);
-        if (!found) {
-          return Response.json({ error: "Job not found or already terminal" }, { status: 404 });
-        }
-        return Response.json({ ok: true });
-      }
-
-      // --- DELETE /api/agents/jobs (kill all) ---
-      if (url.pathname === JOBS && req.method === "DELETE") {
-        const count = killAll();
-        return Response.json({ ok: true, killed: count });
-      }
-
-      // Not handled
-      return null;
+        info.endedAt = Date.now();
+        broadcast({ type: "job:completed", job: { ...info } });
+      })();
+      return Response.json({ job: info }, { status: 201 });
     },
   };
 }

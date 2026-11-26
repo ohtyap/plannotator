@@ -232,24 +232,35 @@ describe.if(hasDom)("annotate folder image bases", () => {
     document.body.appendChild(host);
     root = createRoot(host);
     await act(async () => { root?.render(<App />); });
-    if (!singleFile) {
-      await waitFor(() => document.querySelectorAll("button.file-tree-folder").length === 2, "two document folders");
-      for (const name of ["a", "b"]) {
-        if (document.querySelector(`button.file-tree-item[title="${name}/prd.md"]`)) continue;
-        const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button.file-tree-folder"))
-          .find((item) => item.textContent?.trim() === name);
-        if (!button) throw new Error(`File browser did not discover ${name}`);
-        await act(async () => button.click());
-      }
-      expect(document.querySelectorAll("button.file-tree-item")).toHaveLength(2);
+    if (!singleFile) await openFolderPicker();
+  }
+
+  async function openFolderPicker(): Promise<void> {
+    await waitFor(() => !!chooseFileButton(), "Choose a file");
+    await act(async () => chooseFileButton()!.click());
+    await waitFor(() => document.querySelectorAll("button.file-tree-folder").length === 2, "two document folders");
+    for (const name of ["a", "b"]) {
+      if (document.querySelector(`button.file-tree-item[title="${name}/prd.md"]`)) continue;
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button.file-tree-folder"))
+        .find((item) => item.textContent?.trim() === name);
+      if (!button) throw new Error(`File picker did not discover ${name}`);
+      await act(async () => button.click());
     }
+    expect(document.querySelectorAll("button.file-tree-item")).toHaveLength(2);
+  }
+
+  function chooseFileButton(): HTMLButtonElement | undefined {
+    return Array.from(host?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.getAttribute("aria-label") === "Choose a file" || button.textContent?.trim() === "Choose a file");
   }
 
   async function selectDocument(name: string): Promise<void> {
+    if (!document.querySelector('button.file-tree-item')) await openFolderPicker();
     const button = document.querySelector<HTMLButtonElement>(`button.file-tree-item[title="${name}/prd.md"]`);
     if (!button) throw new Error(`File browser did not discover ${name}/prd.md`);
     await act(async () => button.click());
     await waitFor(() => host?.querySelectorAll('img[alt="fixture"]').length === 1, "the document image");
+    await waitFor(() => !document.querySelector('button.file-tree-item'), "the picker to close");
   }
 
   async function expectReadableImage(folder: string, name: string): Promise<void> {
@@ -336,7 +347,7 @@ async function startRealBundle(): Promise<RealBundle> {
   }
   env.PLANNOTATOR_DATA_DIR = join(dir, "data");
   env.PLANNOTATOR_REMOTE = "0";
-  env.PLANNOTATOR_AI = "disabled";
+  env.PLANNOTATOR_OPENCODE_URL = "";
   env.PLANNOTATOR_FEEDBACK_HISTORY = "0";
   const child = Bun.spawn(
     [process.execPath, join(import.meta.dir, "testing/annotateBundleServer.ts"), join(dir, "work"), first, second],
@@ -454,20 +465,18 @@ describe.if(hasDom)("annotate bundle Edit Mode", () => {
 });
 
 describe.if(hasDom)("annotate bundle", () => {
-  test("the first file opens by itself; the switcher and the file list keep the given order", async () => {
+  test("the first file opens by itself in the switcher, without a Files sidebar", async () => {
     await mount();
     expect(docRequests()[0]).toBe(BETA);
     expect(switcherText()).toContain("beta.md");
     expect(document.querySelector('[aria-label="Previous file"]')?.hasAttribute("disabled")).toBe(true);
     // The tab names the open file and its place (#2061); the header names it
     // once, in the switcher.
-    expect(document.title).toBe("beta.md (1 of 2) · acme/payments");
+    expect(document.title).toBe("beta.md (1 of 2) · Plannotator");
+    expect(document.querySelector("header")?.textContent).not.toContain("acme/payments");
     expect(document.querySelector("[data-header-document-name]")).toBeNull();
 
-    // The Files tab lists exactly the bundle, unsorted (beta before alpha),
-    // labelled relative to the files' common directory.
-    const items = Array.from(document.querySelectorAll<HTMLElement>(".file-tree-item")).map((el) => el.getAttribute("title"));
-    expect(items).toEqual(["docs/beta.md", "alpha.md"]);
+    expect(document.querySelector(".file-tree-item, [title='File Browser']")).toBeNull();
     // The bundle's directory is never walked as a folder.
     expect(requests.some((r) => r.path === "/api/reference/files")).toBe(false);
     // A bundle file has no in-document Close pill (it led to the folder's
@@ -486,7 +495,7 @@ describe.if(hasDom)("annotate bundle", () => {
     await waitFor(() => switcherText().includes("2 of 2"), "the second file");
     expect(switcherText()).toContain("alpha.md");
     expect(docRequests()).toContain(ALPHA);
-    expect(document.title).toBe("alpha.md (2 of 2) · acme/payments");
+    expect(document.title).toBe("alpha.md (2 of 2) · Plannotator");
     // Both files' saved comments are in the session now.
     await waitFor(() => !!document.querySelector("[data-decision-primary]")?.textContent?.includes("Send Feedback"), "Send Feedback");
 

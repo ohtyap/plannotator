@@ -24,7 +24,7 @@ function git(...args: string[]) {
 beforeEach(() => {
   const env = { ...process.env };
   restoreEnv = () => {
-    for (const key of ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_AI", "PLANNOTATOR_REMOTE", "PLANNOTATOR_PORT", "PLANNOTATOR_REVIEW_PROGRESS"]) {
+    for (const key of ["PLANNOTATOR_DATA_DIR", "PLANNOTATOR_OPENCODE_URL", "PLANNOTATOR_REMOTE", "PLANNOTATOR_PORT", "PLANNOTATOR_REVIEW_PROGRESS"]) {
       if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
     }
   };
@@ -32,7 +32,7 @@ beforeEach(() => {
   cwd = join(root, "repo");
   mkdirSync(cwd);
   process.env.PLANNOTATOR_DATA_DIR = join(root, "data");
-  process.env.PLANNOTATOR_AI = "disabled";
+  process.env.PLANNOTATOR_OPENCODE_URL = "";
   process.env.PLANNOTATOR_REMOTE = "0";
   delete process.env.PLANNOTATOR_PORT;
   git("init", "-b", "main");

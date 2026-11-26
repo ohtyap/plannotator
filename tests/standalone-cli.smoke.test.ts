@@ -28,7 +28,7 @@ async function withSandbox(fn: (cwd: string, env: NodeJS.ProcessEnv) => Promise<
       PLANNOTATOR_BROWSER: NO_BROWSER,
       PLANNOTATOR_REMOTE: "0",
       PLANNOTATOR_READY_FILE: join(cwd, "ready.jsonl"),
-      PLANNOTATOR_AI: "disabled",
+      PLANNOTATOR_OPENCODE_URL: "",
     });
   } finally {
     rmSync(cwd, { recursive: true, force: true });
@@ -109,7 +109,7 @@ test("unsupported commands and PR URLs fail before starting a session", async ()
   });
 });
 
-test("review and annotate ignore retired updater configuration", async () => {
+test("review and annotate preserve but ignore retired settings", async () => {
   const cases = [
     { args: ["review", "--patch-file", "-", "--json"], path: "/api/diff", stdin: patch, body: { approved: true, annotations: [] } },
     { args: ["annotate", "test.md", "--json"], path: "/api/plan", body: { annotations: [], feedback: "A note." } },
@@ -118,23 +118,46 @@ test("review and annotate ignore retired updater configuration", async () => {
     await withSandbox(async (cwd, env) => {
       const configFile = join(env.PLANNOTATOR_DATA_DIR!, "config.json");
       mkdirSync(env.PLANNOTATOR_DATA_DIR!);
-      writeFileSync(configFile, JSON.stringify({ autoUpdate: true, updateCheck: true, displayName: "Before" }));
+      const priorDefaults = { jj: { defaultDiffType: "jj-line" } };
+      const oldAgentSettings = { agentSwitch: { switchTo: "custom", customName: "Retired" }, agentTool: true, agentTerminalSide: "right" };
+      writeFileSync(configFile, JSON.stringify({
+        autoUpdate: true, updateCheck: true, displayName: "Before", reviewDefaults: priorDefaults, ...oldAgentSettings,
+      }));
       writeFileSync(join(cwd, "test.md"), "# Test");
       const result = await withSession(args, cwd, env, async (url) => {
         const data = await (await api(url, path)).json();
         expect(data.serverConfig).not.toHaveProperty("autoUpdate");
         expect(data.serverConfig).not.toHaveProperty("updateCheck");
+        expect(data.serverConfig).not.toHaveProperty("displayName");
+        expect(data.serverConfig).not.toHaveProperty("gitUser");
+        expect(data.serverConfig).not.toHaveProperty("reviewDefaults");
+        for (const key of Object.keys(oldAgentSettings)) expect(data.serverConfig).not.toHaveProperty(key);
         expect(data).not.toHaveProperty("updateAvailable");
+        if (path === "/api/plan") expect(data).not.toHaveProperty("repoInfo");
         expect((await post(url, "/api/update", {})).status).toBe(404);
-        expect((await post(url, "/api/config", { autoUpdate: false, updateCheck: false, displayName: "After" })).ok).toBe(true);
+        expect((await post(url, "/api/config", {
+          autoUpdate: false, updateCheck: false, displayName: "After", favicon: "yellow",
+          reviewDefaults: { jj: { defaultDiffType: "jj-all" } },
+          agentSwitch: "invalid", agentTool: false, agentTerminalSide: "left",
+        })).ok).toBe(true);
         expect(JSON.parse(readFileSync(configFile, "utf8"))).toMatchObject({
-          autoUpdate: true, updateCheck: true, displayName: "After",
+          autoUpdate: true, updateCheck: true, displayName: "Before", favicon: "yellow", reviewDefaults: priorDefaults, ...oldAgentSettings,
         });
         expect((await post(url, "/api/feedback", { ...body, serverSession: data.serverSession })).ok).toBe(true);
       }, stdin);
       expect(result.code).toBe(0);
     });
   }
+});
+
+test("review does not open a Jujutsu-only checkout", async () => {
+  await withSandbox(async (cwd, env) => {
+    mkdirSync(join(cwd, ".jj", "repo"), { recursive: true });
+    const result = await run(["review", "--json"], cwd, env);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Not in a supported VCS repo");
+    expect(existsSync(env.PLANNOTATOR_READY_FILE!)).toBe(false);
+  });
 });
 
 test("local checkout review serves an actual working tree diff and returns selected feedback", async () => {

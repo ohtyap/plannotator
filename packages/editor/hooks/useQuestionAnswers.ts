@@ -3,7 +3,7 @@ import { questionAnswerAnnotationId, type QuestionAnswer } from '@plannotator/sh
 import type { Annotation } from '@plannotator/ui/types';
 import type { UndoHistoryApi } from '@plannotator/ui/hooks/useUndoHistory';
 import type { CollectionMutation } from '@plannotator/ui/utils/undoHistory';
-import { getIdentity } from '@plannotator/ui/utils/identity';
+import { getAnnotationAuthor } from '@plannotator/ui/utils/identity';
 import { upsertQuestionAnswerAnnotation } from '@plannotator/ui/utils/questionAnswers';
 
 /**
@@ -103,9 +103,10 @@ export function useQuestionAnswers<TAction>({
     let next = upsertQuestionAnswerAnnotation(current, blockId, answer, key);
     if (next === current) return;
     const afterIndex = next.findIndex((a) => a.id === id);
-    if (afterIndex !== -1 && !next[afterIndex].author) {
+    const author = getAnnotationAuthor();
+    if (author && afterIndex !== -1 && !next[afterIndex].author) {
       next = next.slice();
-      next[afterIndex] = { ...next[afterIndex], author: getIdentity() };
+      next[afterIndex] = { ...next[afterIndex], author };
     }
     const after: Located = { annotation: afterIndex === -1 ? undefined : next[afterIndex], index: afterIndex === -1 ? next.length : afterIndex };
     if (!before.annotation && !after.annotation) return;

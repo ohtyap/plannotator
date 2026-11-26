@@ -48,7 +48,7 @@ interface CompletionOverlayProps {
 }
 
 export function CompletionOverlay({ submitted, title, subtitle, agentLabel, links, footer }: CompletionOverlayProps) {
-  const { state, enableAndStart } = useAutoClose(!!submitted);
+  const state = useAutoClose(!!submitted);
 
   if (!submitted) return null;
 
@@ -98,13 +98,10 @@ export function CompletionOverlay({ submitted, title, subtitle, agentLabel, link
 
         <div className="pt-4 border-t border-border space-y-2">
           {state.phase === 'counting' ? (
-            <>
-              <p className="text-sm text-muted-foreground">
-                This tab will close in <span className="text-foreground font-medium">{state.remaining}</span> second
-                {state.remaining !== 1 ? 's' : ''}...
-              </p>
-              <p className="text-xs text-muted-foreground/60">You can change this in Settings.</p>
-            </>
+            <p className="text-sm text-muted-foreground">
+              This tab will close in <span className="text-foreground font-medium">{state.remaining}</span> second
+              {state.remaining !== 1 ? 's' : ''}...
+            </p>
           ) : state.phase === 'closeFailed' ? (
             <>
               <p className="text-sm text-muted-foreground">
@@ -119,17 +116,7 @@ export function CompletionOverlay({ submitted, title, subtitle, agentLabel, link
               <p className="text-sm text-muted-foreground">
                 You can close this tab and return to <span className="text-foreground font-medium">{agentLabel}</span>.
               </p>
-              {state.phase === 'prompt' ? (
-                <>
-                  <label className="flex items-center justify-center gap-2 cursor-pointer group">
-                    <input type="checkbox" checked={false} onChange={enableAndStart} className="accent-primary" />
-                    <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                      Auto-close this tab after 3 seconds
-                    </span>
-                  </label>
-                  <p className="text-xs text-muted-foreground/60">You can change the delay in Settings.</p>
-                </>
-              ) : sentNothing ? null : (
+              {!sentNothing && (
                 <p className="text-xs text-muted-foreground/60">Your response has been sent.</p>
               )}
             </>

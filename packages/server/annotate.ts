@@ -18,7 +18,6 @@ import { isRemoteSession, getServerHostname, startBunServerOnAvailablePort, buil
 import { createRequestHostGuard } from "./request-host-guard";
 import { withPlannotatorServerHeader } from "./plannotator-server-marker";
 import { isSameOriginRequest, refuseCrossOriginWrite } from "./request-origin-guard";
-import { getSourceRepoInfo } from "./repo";
 import type { Origin } from "@plannotator/shared/agents";
 import { handleImage, handleUpload, handleApiNotFound, handleFavicon, handleCustomThemesScript, customThemesPage, handleReferenceSkills, handleReferenceSkillContent, readDraftGenerationFromBody, readDraftGenerationFromUrl, missingDraftResponse } from "./shared-handlers";
 import { handleDoc, handleDocExists, handleFileBrowserFiles, resolveAllowedDocPath, type FolderAnnotateHistory } from "./reference-handlers";
@@ -61,7 +60,7 @@ import {
   type AnnotateClientLeaseStreamSession,
 } from "@plannotator/shared/annotate-client-lease";
 import { createAnnotateDecisionSettler, isNothingToSendFeedbackBody } from "@plannotator/shared/annotate-decision";
-import { agentSwitchConfigToSave, agentToolSaveFailed, cookieHostConfigWrite, saveConfig, detectGitUser, getServerConfig, isAgentTerminalSide, loadConfig, resolveAIEnabled, resolveAnnotateHistory, resolveFeedbackHistory } from "./config";
+import { cookieHostConfigWrite, saveConfig, getServerConfig, loadConfig, resolveAnnotateHistory, resolveFeedbackHistory } from "./config";
 import { appendFeedbackRecord, type FeedbackDecision, type FeedbackSurface } from "@plannotator/shared/feedback-archive";
 import { isFaviconStyle, type FaviconStyle } from "@plannotator/shared/favicon";
 import { existsSync } from "fs";
@@ -304,7 +303,6 @@ export async function startAnnotateServer(
   if (liveApp && isRemote) throw new Error("Live app annotation is unavailable in remote mode");
   const compressAppHtml = isRemote;
   const app = openPackedApp(htmlContent, { page: (html) => customThemesPage(html) });
-  const gitUser = detectGitUser();
 
   // Diagram sources (.mmd/.mermaid/.dot/.gv) and AsciiDoc (.adoc) render
   // through their own engine rather than the markdown pipeline: the document
@@ -543,7 +541,7 @@ export async function startAnnotateServer(
     return legacyDurable && (archived || !hasContent);
   };
   const externalAnnotations = createExternalAnnotationHandler("plan");
-  const aiRuntime = resolveAIEnabled() ? await createAIRuntime({ cwd: agentCwd }) : null;
+  const aiRuntime = await createAIRuntime({ cwd: agentCwd });
   const htmlAssets = createHtmlAssetRegistry({
     folderPath: mode === "annotate-folder" ? folderPath : undefined,
     // An HTML document opened outside the roots (#2291) gets a narrow asset root.
@@ -724,11 +722,6 @@ export async function startAnnotateServer(
   // Repo identity follows the annotated source when it is on disk and in a repo.
   // A source outside any repo and rootless sessions (URLs, agent messages, live
   // apps) keep the launch directory.
-  const repoInfoCwd =
-    mode === "annotate-folder" && folderPath
-      ? folderPath
-      : bundleRoot ?? (draftFilePath ? dirname(draftFilePath) : undefined);
-  const repoInfo = await getSourceRepoInfo(repoInfoCwd);
 
   // Decision promise
   let resolveDecision: (result: {
@@ -842,9 +835,8 @@ export async function startAnnotateServer(
                 : { enabled: false as const },
               sharingEnabled: false,
               convertHtml: false,
-              repoInfo,
               projectRoot: process.cwd(),
-              serverConfig: getServerConfig(gitUser, undefined, { cookieHost: !isRemote }),
+              serverConfig: getServerConfig(undefined, { cookieHost: !isRemote, hideAgentSettings: true }),
               feedbackTemplates: {
                 fileFeedback: getAnnotateFileFeedbackTemplate(origin),
                 messageFeedback: getAnnotateMessageFeedbackTemplate(origin),
@@ -909,7 +901,6 @@ export async function startAnnotateServer(
               sharingEnabled,
               shareBaseUrl,
               pasteApiUrl,
-              repoInfo,
               projectRoot: folderPath || bundleRoot || process.cwd(),
               // The bundle's files in review order (annotate-bundle only).
               ...(bundleFiles ? { bundle: bundleFiles } : {}),
@@ -920,7 +911,7 @@ export async function startAnnotateServer(
               // Per-document draft copies (/api/draft/document): absent means
               // the client keeps every comment in the session draft only.
               ...(annotateDrafts.documentsEnabled ? { documentDrafts: true } : {}),
-              serverConfig: getServerConfig(gitUser, undefined, { cookieHost: !isRemote }),
+              serverConfig: getServerConfig(undefined, { cookieHost: !isRemote, hideAgentSettings: true }),
               ...(recentMessages ? { recentMessages } : {}),
               // Resolved copy-wrapper templates (config-aware, placeholders
               // intact) so clipboard Copy matches what Send Feedback produces
@@ -1070,28 +1061,18 @@ export async function startAnnotateServer(
               return Response.json({ error: "Cross-origin config writes are not allowed" }, { status: 403 });
             }
             try {
-              const body = (await req.json()) as { agentSwitch?: unknown; displayName?: string; diffOptions?: Record<string, unknown>; theme?: Record<string, unknown>; favicon?: FaviconStyle; agentTool?: unknown; conventionalComments?: boolean; conventionalLabels?: unknown[] | null; agentTerminalSide?: unknown; agentTerminalDefaultAgent?: unknown };
+              const body = (await req.json()) as { diffOptions?: Record<string, unknown>; theme?: Record<string, unknown>; favicon?: FaviconStyle; conventionalComments?: boolean; conventionalLabels?: unknown[] | null };
               const toSave: Record<string, unknown> = {};
-              // OpenCode's agent switch (#1390): a known shape or nothing is saved.
-              const agentSwitch = agentSwitchConfigToSave(body);
-              if (agentSwitch === null) return Response.json({ error: "Invalid agentSwitch" }, { status: 400 });
-              if (agentSwitch !== undefined) toSave.agentSwitch = agentSwitch;
-              if (body.displayName !== undefined) toSave.displayName = body.displayName;
               if (body.diffOptions !== undefined) toSave.diffOptions = body.diffOptions;
               if (body.theme !== undefined) toSave.theme = body.theme;
               if (isFaviconStyle(body.favicon)) toSave.favicon = body.favicon;
-              // The agent tool switch: boolean only; it applies to the next session.
-              if (typeof body.agentTool === "boolean") toSave.agentTool = body.agentTool;
               if (body.conventionalComments !== undefined) toSave.conventionalComments = body.conventionalComments;
               if (body.conventionalLabels !== undefined) toSave.conventionalLabels = body.conventionalLabels;
-              if (isAgentTerminalSide(body.agentTerminalSide)) toSave.agentTerminalSide = body.agentTerminalSide;
-              if (typeof body.agentTerminalDefaultAgent === "string") toSave.agentTerminalDefaultAgent = body.agentTerminalDefaultAgent;
               // The cookie switch (#2184): its own write, which never replaces another urlHost;
               // refused in remote mode and --tailscale sessions.
               const cookieHostWrite = cookieHostConfigWrite((body as { cookieHost?: unknown }).cookieHost, isRemote);
               if (cookieHostWrite && cookieHostWrite.status !== 200) return Response.json(cookieHostWrite.body, { status: cookieHostWrite.status });
               if (Object.keys(toSave).length > 0 && !saveConfig(toSave as Parameters<typeof saveConfig>[0])) return Response.json({ error: "config.json could not be saved; nothing changed. A config.json that is not valid JSON is never written over: fix or remove it." }, { status: 500 });
-              if (agentToolSaveFailed(toSave)) return Response.json({ error: "Could not save the setting to config.json." }, { status: 500 });
               return Response.json(cookieHostWrite ? cookieHostWrite.body : { ok: true });
             } catch {
               return Response.json({ error: "Invalid request" }, { status: 400 });

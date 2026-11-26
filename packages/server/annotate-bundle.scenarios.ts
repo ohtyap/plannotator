@@ -32,7 +32,7 @@ const ENV_KEYS = [
   "PLANNOTATOR_DATA_DIR",
   "PLANNOTATOR_PORT",
   "PLANNOTATOR_REMOTE",
-  "PLANNOTATOR_AI",
+  "PLANNOTATOR_OPENCODE_URL",
   "PLANNOTATOR_ANNOTATE_HISTORY",
   "PLANNOTATOR_FEEDBACK_HISTORY",
 ] as const;
@@ -67,7 +67,7 @@ export function defineAnnotateBundleScenarios(runtime: string, start: StartBundl
       process.env.PLANNOTATOR_DATA_DIR = join(root, "data");
       delete process.env.PLANNOTATOR_PORT;
       process.env.PLANNOTATOR_REMOTE = "0";
-      process.env.PLANNOTATOR_AI = "disabled";
+      process.env.PLANNOTATOR_OPENCODE_URL = "";
       process.env.PLANNOTATOR_ANNOTATE_HISTORY = "1";
       process.env.PLANNOTATOR_FEEDBACK_HISTORY = "1";
       mkdirSync(join(root, "work/docs"), { recursive: true });

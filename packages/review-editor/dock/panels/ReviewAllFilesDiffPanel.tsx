@@ -167,7 +167,6 @@ export const ReviewAllFilesDiffPanel: React.FC<IDockviewPanelProps> = () => {
             previewedPaths: preview.previewedPaths,
             isPreviewable: preview.isPreviewable,
             show: preview.show,
-            onEditingFileChange: preview.setEditingFile,
             registerViewTarget: preview.registerViewTarget,
             renderViewControl: ({ file, iconOnly, touch }: { file: DiffFile; iconOnly: boolean; touch: boolean }) => (
               <ReviewMarkdownViewControl file={file} iconOnly={iconOnly} touch={touch} />
@@ -215,7 +214,6 @@ export const ReviewAllFilesDiffPanel: React.FC<IDockviewPanelProps> = () => {
         if (isSvgPath(filePath)) setSvgView(filePath, view === 'source' ? 'source' : 'image');
         else baseMarkdownPreview?.show(filePath, view);
       },
-      onEditingFileChange: baseMarkdownPreview?.onEditingFileChange,
       registerViewTarget: baseMarkdownPreview?.registerViewTarget,
       renderViewControl: (args: { file: DiffFile; iconOnly: boolean; touch: boolean }) =>
         isSvg(args.file) ? <SvgViewControl {...args} /> : baseMarkdownPreview?.renderViewControl(args) ?? null,
@@ -351,12 +349,6 @@ export const ReviewAllFilesDiffPanel: React.FC<IDockviewPanelProps> = () => {
       onCollapseAllPressed={commitFolding.onCollapseAllPressed}
       leadingContent={leadingContent}
       minimap
-      // EXPERIMENTAL edit-to-suggestion mode. This plain all-files panel is
-      // the ONLY surface that opts in (Guided Review's viewport manager
-      // evicts CodeViews, which would destroy an active editor session).
-      enableEditSuggestions={state.editSuggestionsEnabled}
-      onAddSuggestionsForFile={state.onAddSuggestionsForFile}
-      onAddEditorCommentForFile={state.onAddEditorCommentForFile}
       headerHeightHint={headerHeightHint}
     />
     </>

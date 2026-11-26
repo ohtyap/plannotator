@@ -14,12 +14,8 @@ afterEach(() => {
 });
 
 const baseProps = {
-  appVersion: '0.0.0',
   onOpenSettings: () => {},
-  onOpenExport: () => {},
   onCopyAgentInstructions: () => {},
-  onDownloadAnnotations: () => {},
-  onPrint: () => {},
   onCopyShareLink: () => {},
   onOpenImport: () => {},
   onSaveToObsidian: () => {},
@@ -100,11 +96,9 @@ describe.if(hasDom)('PlanHeaderMenu compact actions', () => {
 
     expect(host.textContent).not.toContain('Approve');
     expect(host.textContent).toContain('Settings');
-    const footer = host.querySelector('[data-menu-version]')!;
-    expect(footer.textContent).toContain('v0.0.0');
-    expect([...footer.querySelectorAll('a')].map((link) => link.getAttribute('href')))
-      .toEqual(['https://github.com/backnotprop/plannotator']);
-    expect(footer.querySelector('button')).toBeNull();
+    expect(host.textContent).not.toContain('Export');
+    expect(host.textContent).not.toMatch(/download annotations|save as pdf/i);
+    expect(host.querySelector('[data-menu-version], a[href*="github.com/backnotprop/plannotator"]')).toBeNull();
     await act!(async () => root.unmount());
   });
 });

@@ -2,7 +2,7 @@
  * Export Modal with tabs for Share, Annotations, and Notes
  *
  * Share tab (default): Shows shareable URL with copy button
- * Annotations tab: Shows human-readable annotations output with copy/download
+ * Annotations tab: Shows human-readable annotations output with a copy button
  * Notes tab: Save plan to Obsidian/Bear without approving
  */
 
@@ -153,16 +153,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const urlIsLarge = shareUrl.length > 2048;
   // Hash-based sharing unavailable (e.g. HTML render mode) — show only short link
   const hashUnavailable = !shareUrl && !!onGenerateShortUrl;
-
-  const handleDownloadAnnotations = () => {
-    const blob = new Blob([annotationsOutput], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'annotations.md';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const handleSaveToNotes = async (target: SaveTarget) => {
     if (!markdown) return;
@@ -637,12 +627,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className="px-3 py-1.5 rounded-md text-xs font-medium bg-muted hover:bg-muted/80 transition-colors"
             >
               {copied === 'annotations' ? 'Copied!' : 'Copy'}
-            </button>
-            <button
-              onClick={handleDownloadAnnotations}
-              className="px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-            >
-              Download Annotations
             </button>
           </div>
         )}

@@ -1,20 +1,5 @@
 import { configStore } from './configStore';
 import { SETTINGS } from './settings';
-import { storage } from '../utils/storage';
-
-export interface ReviewSettingsDiffOption {
-  id: string;
-  label: string;
-  description: string;
-}
-
-/** The default-diff choices Settings → Review offers for one VCS. */
-export interface VcsReviewSettingsDescriptor {
-  id: string;
-  label: string;
-  defaultDiffType: string;
-  diffOptions: ReviewSettingsDiffOption[];
-}
 
 /**
  * The ONLY writers for the coupled setting pair (reviewPanelView,
@@ -95,64 +80,9 @@ export function setReviewDefaultDiffType(
   }
 }
 
-/**
- * The saved default diff for a VCS other than Git (today: Jujutsu), read from
- * `reviewDefaults[id]`. Git keeps its original `defaultDiffType` setting and
- * its coupled setter above; a value this VCS does not offer reads as its own
- * default, never as a Git mode.
- */
-export function getProviderReviewDefaultDiffType(
-  descriptor: VcsReviewSettingsDescriptor,
-  store: PanelViewConfigStore = configStore,
-): string {
-  const configured = store.get('reviewDefaults')[descriptor.id]?.defaultDiffType;
-  return configured && descriptor.diffOptions.some((option) => option.id === configured)
-    ? configured
-    : descriptor.defaultDiffType;
-}
-
-export function setProviderReviewDefaultDiffType(
-  providerId: string,
-  value: string,
-  store: PanelViewConfigStore = configStore,
-): void {
-  store.set('reviewDefaults', {
-    ...store.get('reviewDefaults'),
-    [providerId]: { defaultDiffType: value },
-  });
-}
-
-/**
- * One-time gate for the auto-mark-viewed notice — the toast that fires the
- * FIRST time auto-view actually marks a file, i.e. the moment the feature
- * demonstrates itself. Cookie-based, mirroring the other review first-run
- * gates, so it survives the random port each session runs on. Versioned so a
- * meaningful revision can re-show it.
- *
- * It lives beside the setting rather than in the review app because BOTH
- * writers of the setting (Settings → Review here, and the file-list gear in the
- * review app) must consume the gate: someone who found the switch has
- * demonstrably discovered the feature and must never be told about it.
- */
-const AUTO_VIEWED_NOTICE_SEEN_KEY = 'plannotator-auto-viewed-notice-seen';
-const AUTO_VIEWED_NOTICE_VERSION = '1';
-
-export function needsAutoViewedNotice(): boolean {
-  return storage.getItem(AUTO_VIEWED_NOTICE_SEEN_KEY) !== AUTO_VIEWED_NOTICE_VERSION;
-}
-
-export function markAutoViewedNoticeSeen(): void {
-  storage.setItem(AUTO_VIEWED_NOTICE_SEEN_KEY, AUTO_VIEWED_NOTICE_VERSION);
-}
-
-/**
- * The only writer of `reviewAutoViewed` outside the notice's own "Turn off"
- * action. Stamps the notice gate: an explicit toggle is proof of discovery.
- */
 export function setReviewAutoViewed(
   value: boolean,
   store: PanelViewConfigStore = configStore,
 ): void {
-  markAutoViewedNoticeSeen();
   store.set('reviewAutoViewed', value);
 }

@@ -121,8 +121,8 @@ for (const [runtime, startServer] of [
       // A host must not prefix feedback with the opening target after a
       // worktree switch. Exercise both transports, without changing host cwd.
       useTempDataDir();
-      saveEnv("PLANNOTATOR_AI");
-      process.env.PLANNOTATOR_AI = "disabled";
+      saveEnv("PLANNOTATOR_OPENCODE_URL");
+      process.env.PLANNOTATOR_OPENCODE_URL = "";
       await reservePiPort();
       const cwd = process.cwd();
       const repo = initRepo();
@@ -139,7 +139,6 @@ for (const [runtime, startServer] of [
       try {
         const diff = await (await fetch(`${server.url}/api/diff`)).json();
         expect(diff.repoInfo).toMatchObject({ display: "example/selected", branch: "main" });
-        expect(diff.serverConfig.gitUser).toBe("Selected author");
         const switched = await fetch(`${server.url}/api/diff/switch`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ diffType: `worktree:${worktree}:uncommitted` }),

@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, type RefObject } from "react";
 import { AnnotationType, type Annotation, type EditorMode, type HostDraft, type HtmlAnnotationTarget, type HtmlElementAnchor, type HtmlElementContext, type ImageAttachment } from "../../types";
 import { THUMBS_UP_LABEL, type QuickLabel } from "../../utils/quickLabels";
-import { getIdentity } from "../../utils/identity";
+import { getAnnotationAuthor } from "../../utils/identity";
 import type {
   ToolbarState,
   CommentPopoverState,
@@ -943,7 +943,7 @@ export function useHtmlAnnotation({
               type: AnnotationType.COMMENT,
               text: "",
               originalText: message.text,
-              author: getIdentity(),
+              author: getAnnotationAuthor(),
               createdA: Date.now(),
               htmlAnchor: message.anchor,
               elementContext: message.context,
@@ -1266,7 +1266,7 @@ export function useHtmlAnnotation({
         endOffset: 0,
         type: AnnotationType.DELETION,
         originalText: text,
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
         createdA: Date.now(),
         htmlAnchor: pendingAnchorRef.current ?? undefined,
         elementContext: pendingContextRef.current ?? undefined,
@@ -1334,7 +1334,7 @@ export function useHtmlAnnotation({
         endOffset: 0,
         type: AnnotationType.COMMENT,
         originalText: text,
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
         createdA: Date.now(),
         ...body,
         htmlAnchor: pendingAnchorRef.current ?? undefined,
@@ -1428,7 +1428,7 @@ export function useHtmlAnnotation({
         originalText: text,
         isQuickLabel: true,
         quickLabelTip: label.tip,
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
         createdA: Date.now(),
         htmlAnchor: pendingAnchorRef.current ?? undefined,
         elementContext: pendingContextRef.current ?? undefined,
@@ -1504,7 +1504,7 @@ export function useHtmlAnnotation({
       type: AnnotationType.COMMENT,
       text: "",
       originalText: text,
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       createdA: Date.now(),
       htmlAnchor: pendingAnchorRef.current ?? undefined,
       elementContext: pendingContextRef.current ?? undefined,

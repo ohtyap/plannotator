@@ -13,6 +13,8 @@
 import { describe, test, expect, afterAll, beforeEach } from 'bun:test';
 import { setStorageBackend, resetStorageBackend, type StorageBackend } from '../utils/storage';
 import { ConfigStoreForTest } from './configStore';
+import { setAnnotationIdentityEnabled } from '../utils/annotationIdentityPolicy';
+import { getAnnotationAuthor } from '../utils/identity';
 
 describe('configStore lazy resolution', () => {
   const stored = new Map<string, string>();
@@ -69,5 +71,21 @@ describe('configStore lazy resolution', () => {
     const second = store.get('displayName');
     expect(second).toBe(first);
     expect(reads.length).toBe(readsAfterLoad);
+  });
+
+  test('single-user mode ignores saved names and does not write an identity cookie', () => {
+    setStorageBackend(hostBackend);
+    setAnnotationIdentityEnabled(false);
+    try {
+      stored.set('plannotator-identity', 'Old browser name');
+      const store = new ConfigStoreForTest();
+      store.init({ displayName: 'Old server name' });
+      expect(store.get('displayName')).toBe('');
+      expect(getAnnotationAuthor()).toBeUndefined();
+      expect(reads).not.toContain('plannotator-identity');
+      expect(writes).not.toContain('plannotator-identity');
+    } finally {
+      setAnnotationIdentityEnabled(true);
+    }
   });
 });

@@ -142,7 +142,7 @@ describe.if(hasDom)("annotate --title: the tab and the header", () => {
   test("without a title: the tab and the header name the open file, as before", async () => {
     await mount(undefined);
     await waitFor(() => document.title.startsWith("proposal.md"));
-    expect(document.title).toBe("proposal.md · acme/payments-service");
+    expect(document.title).toBe("proposal.md · Plannotator");
     expect(headerName()?.textContent).toBe("proposal.md");
   });
 });

@@ -294,6 +294,16 @@ afterAll(() => {
 });
 
 describe.if(hasDom)("annotate decision control", () => {
+  test("a fresh profile opens directly on the document without onboarding", async () => {
+    setStorageBackend(memoryBackend);
+    await mountAnnotate();
+
+    expect(primaryButton()).not.toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector("[data-grid-paper-column]")).toBeNull();
+    expect([...memory.keys()].filter((key) => /plan-look|announcement-seen|announce-/.test(key))).toEqual([]);
+  });
+
   test("Done at zero posts the byte-identical legacy /api/feedback body", async () => {
     setStorageBackend(memoryBackend);
     seedAnnouncementsSeen();
@@ -574,10 +584,9 @@ describe.if(hasDom)("annotate decision control", () => {
   });
 });
 
-/** A file row in the folder session's sidebar tree (labelled without `.md`). */
-function fileButton(name: string): HTMLButtonElement | undefined {
-  return Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
-    .find((button) => button.textContent?.trim() === name);
+function chooseFileButton(): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]'))
+    .find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === "Choose a file");
 }
 
 /** The completion overlay's state attribute, or null while no overlay shows. */
@@ -597,22 +606,6 @@ function completionTitle(): string | null {
  * screen there told the reviewer the agent got something it never did.
  */
 describe.if(hasDom)("annotate completion screen", () => {
-  type GlimpseWindow = Window & { glimpse?: { close?: () => void } };
-
-  // The footer's "Your response has been sent." line renders in the auto-close
-  // `closed` phase: an immediate auto-close whose close request went to a host
-  // window (Glimpse, or the VS Code panel's parent frame), so the tab stays up.
-  // With the default delay the footer shows the auto-close prompt instead and
-  // an assertion about the line would pass vacuously.
-  afterEach(() => {
-    delete (window as GlimpseWindow).glimpse;
-  });
-
-  function useImmediateHostClose(): void {
-    memory.set("plannotator-auto-close", "0");
-    (window as GlimpseWindow).glimpse = { close: () => {} };
-  }
-
   async function clickPrimary(): Promise<void> {
     await act(async () => primaryButton()!.click());
     await settle();
@@ -632,7 +625,6 @@ describe.if(hasDom)("annotate completion screen", () => {
   test("Done with nothing to send shows the Done screen, not Feedback Sent", async () => {
     setStorageBackend(memoryBackend);
     seedAnnouncementsSeen();
-    useImmediateHostClose();
     await mountAnnotate();
 
     await clickPrimary();
@@ -647,7 +639,6 @@ describe.if(hasDom)("annotate completion screen", () => {
   test("a note that was sent still shows Feedback Sent", async () => {
     setStorageBackend(memoryBackend);
     seedAnnouncementsSeen();
-    useImmediateHostClose();
     await mountAnnotate();
 
     await openComposer("Send a note");
@@ -657,15 +648,11 @@ describe.if(hasDom)("annotate completion screen", () => {
     expect(submissions[0]!.nothingToSend).toBeUndefined();
     expect(completionState()).toBe("denied");
     expect(completionTitle()).toBe("Feedback Sent");
-    // Something was sent, so the footer still says so (this also proves the
-    // harness reaches the footer line the nothing-sent tests assert away).
-    expect(completionText()).toContain("has been sent");
   });
 
   test("Close keeps Session Closed but does not claim a response was sent", async () => {
     setStorageBackend(memoryBackend);
     seedAnnouncementsSeen();
-    useImmediateHostClose();
     await mountAnnotate();
 
     const close = document.querySelector<HTMLButtonElement>(
@@ -684,7 +671,6 @@ describe.if(hasDom)("annotate completion screen", () => {
   test("folder: a comment on another document still shows Feedback Sent", async () => {
     setStorageBackend(memoryBackend);
     seedAnnouncementsSeen();
-    useImmediateHostClose();
     fileBrowserModule!.setFileTreeBackend({
       loadTree: async () => Response.json({
         tree: [
@@ -712,14 +698,19 @@ describe.if(hasDom)("annotate completion screen", () => {
       filePath: "/repo",
       projectRoot: "/repo",
       documentDrafts: true,
-    }), () => fileButton("alpha"));
+    }), chooseFileButton);
 
-    async function openFile(name: string): Promise<void> {
-      await act(async () => fileButton(name)!.click());
+    async function openFile(name: "alpha.md" | "beta.md"): Promise<void> {
+      await act(async () => chooseFileButton()!.click());
+      const getFile = () => document.querySelector<HTMLButtonElement>(`button.file-tree-item[title="${name}"]`);
+      for (let attempt = 0; attempt < 20 && !getFile(); attempt += 1) await settle();
+      const file = getFile();
+      if (!file) throw new Error(`Folder picker did not load ${name}`);
+      await act(async () => file.click());
       for (let attempt = 0; attempt < 20; attempt += 1) await settle();
     }
-    await openFile("alpha");
-    await openFile("beta"); // the comment now lives on a document that is not open
+    await openFile("alpha.md");
+    await openFile("beta.md"); // the comment now lives on a document that is not open
 
     await clickPrimary();
 

@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { annotateBundleRoot } from "@plannotator/shared/annotate-bundle";
 import { probeAnnotateBundlePath, resolveAnnotateBundleFiles } from "@plannotator/shared/annotate-target";
 import { LIVE_APP_REMOTE_MESSAGE, LIVE_APP_REQUIRES_URL_MESSAGE } from "@plannotator/shared/live-probe";
@@ -78,7 +79,7 @@ export async function runAnnotate(command: AnnotateOptions): Promise<void> {
     sharingEnabled: false,
     approvalNotesSupported: gate,
     clientLeaseSupported: gate && json && !remote,
-    agentCwd: cwd,
+    agentCwd: isUrl ? cwd : bundleFiles || folderPath ? absolutePath : dirname(absolutePath),
     project,
     htmlContent: annotatePage(),
     onReady: handleAnnotateServerReady,

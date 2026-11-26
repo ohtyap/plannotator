@@ -21,6 +21,7 @@ packages/ui/components/html-viewer/HtmlViewer.frameScale.test.tsx
 packages/ui/components/html-viewer/bridgeTouchSelection.test.tsx
 packages/ui/components/html-embed/HtmlEmbedBlock.test.tsx
 packages/ui/components/LazyBlockBoundary.test.tsx
+packages/ui/components/CompletionOverlay.test.tsx
 packages/ui/components/inbox-thread/SnoozeMenu.test.tsx
 packages/ui/components/Viewer.vimMode.integration.test.tsx
 packages/ui/components/CodeFilePopout.lineScroll.test.tsx
@@ -379,10 +380,6 @@ packages/review-editor/App.sessionTitle.test.tsx
 packages/review-editor/App.diffLoadFailure.test.tsx
 packages/review-editor/components/AnnotationToolbar.placement.test.tsx
 packages/review-editor/dock/panels/ReviewPROverviewPanel.ui.test.tsx
-packages/review-editor/components/FileHeader.edit.test.tsx
-packages/review-editor/edit/useEditSession.recovery.test.tsx
-packages/review-editor/edit/discardRestoreRender.test.tsx
-packages/review-editor/edit/selectionActionPopover.test.ts
 packages/review-editor/components/AllFilesCodeView.lifecycle.test.tsx
 packages/review-editor/components/AllFilesCodeView.flushTrailing.test.tsx
 packages/review-editor/components/AllFilesCodeView.hostLineNotes.test.tsx
@@ -479,11 +476,8 @@ packages/editor/askSessionDrafts.test.tsx
 packages/editor/askDocumentLatch.test.tsx
 packages/review-editor/App.decisionControl.test.tsx
 packages/ui/components/TerminalToolsAnnouncementDialog.test.tsx
-packages/editor/App.terminalToolsAnnouncement.test.tsx
 packages/ui/components/AskSessionAnnouncementDialog.test.tsx
-packages/editor/App.askSessionAnnouncement.test.tsx
 packages/ui/components/InboxAnnouncementDialog.test.tsx
-packages/editor/App.inboxAnnouncement.test.tsx
 packages/ui/components/AgentToolAnnouncementDialog.test.tsx
 packages/ui/components/ServerSessionReplacedBanner.test.tsx
 packages/editor/App.agentTool.test.tsx
@@ -568,11 +562,7 @@ packages/ui/components/Settings.compactDisplay.test.tsx
 packages/ui/components/Settings.customFont.test.tsx
 packages/ui/components/Settings.documentTextSize.test.tsx
 packages/ui/components/Settings.documentSourceLineNumbers.test.tsx
-packages/ui/components/Settings.repoOwner.test.tsx
-packages/ui/components/Settings.experimental.test.tsx
-packages/ui/components/Settings.reviewDefaults.test.tsx
 packages/ui/components/Settings.gridChoice.test.tsx
-packages/editor/App.planLookNotice.test.tsx
 packages/ui/config/documentTextSizeSetting.test.ts
 packages/ui/utils/diffFonts.test.ts
 packages/ui/components/Settings.agentTool.test.tsx
@@ -584,7 +574,6 @@ packages/ui/components/touchAnchorWiring.test.tsx
 packages/ui/components/AnnotationToolbar.modeShortcutGuard.test.tsx
 packages/ui/components/PermissionModeSetup.mobile.test.tsx
 packages/ui/components/html-viewer/useHtmlAnnotation.mintedIds.test.tsx
-packages/ui/components/LookAndFeelAnnouncementDialog.test.tsx
 packages/ui/components/CommentPopover.mobile.test.tsx
 packages/ui/components/CommentPopover.forcedDialog.test.tsx
 packages/ui/components/ConfirmDialog.mobile.test.tsx
@@ -602,7 +591,6 @@ packages/review-editor/dock/panels/artifactDocument.test.ts
 packages/review-editor/dock/ReviewDockRightActions.test.tsx
 packages/editor/skillPrimeRenderLoop.test.tsx
 packages/editor/App.compactToc.mobile.test.tsx
-packages/editor/App.permissionModeSetup.test.tsx
 packages/editor/components/CompactPlanStage.test.tsx
 packages/editor/components/FolderAnnotationEmptyState.test.tsx
 packages/editor/components/AppHeader.mobile.test.tsx
@@ -819,7 +807,6 @@ packages/ui/components/TaterSpriteSlots.test.tsx
 packages/inbox/sidebarRedraws.test.tsx
 packages/review-editor/live/toolbarTag.dom.test.tsx
 packages/review-editor/components/FileHeader.toolbar.test.tsx
-packages/review-editor/components/AutoViewedNotice.test.tsx
 packages/inbox/agents/faceSources.test.tsx
 packages/ui/components/agentFace/PowerUpGuy.test.tsx
 packages/review-editor/components/CompactPrimaryAction.test.tsx

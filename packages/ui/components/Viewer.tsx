@@ -85,7 +85,7 @@ import { LazyBlockBoundary } from './LazyBlockBoundary';
 import { isGraphvizLanguage, isMermaidLanguage } from './diagramLanguages';
 import { isHtmlEmbedLanguage, isSvgFenceLanguage } from './html-embed/languages';
 import type { HtmlEmbedHost } from './html-embed/HtmlEmbedBlock';
-import { getIdentity } from '../utils/identity';
+import { getAnnotationAuthor } from '../utils/identity';
 import { type QuickLabel } from '../utils/quickLabels';
 import type { SelectionAction, SelectionActionContext } from '../utils/selectionActions';
 import type { MentionSource } from '../utils/mentions';
@@ -233,6 +233,8 @@ export interface ViewerProps {
    * version). Absent or false: the single image overlay, as always.
    */
   imageLightboxStepping?: boolean;
+  /** Set false to suppress the lightbox's first-wheel zoom tip. */
+  imageLightboxWheelHint?: boolean;
   /**
    * Comments on part of an image (#2100, approval "image-region-comments"):
    * the lightbox gets a Move | Region switch over each markdown image, a
@@ -858,7 +860,6 @@ const ViewerDocumentHeader: React.FC<ViewerDocumentHeaderProps> = ({
                 onInputMethodChange={config.onInputMethodChange}
                 mode={mode}
                 onModeChange={config.onModeChange}
-                taterMode={taterMode}
                 hideQuickLabel={config.hideQuickLabel}
                 compact
                 iconOnly={iconOnly}
@@ -929,6 +930,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
   imageBaseDir,
   onImageClick: hostImageClick,
   imageLightboxStepping = false,
+  imageLightboxWheelHint,
   imageRegionComments = false,
   onDeleteAnnotation,
   onEditAnnotation,
@@ -1256,7 +1258,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
       text,
       originalText: codeText,
       createdA: Date.now(),
-      author: getIdentity(),
+      author: getAnnotationAuthor(),
       images,
       // Host capability: present only when a mentionSource was supplied AND a
       // token survived, so a code-block comment without one is unchanged.
@@ -1635,7 +1637,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
   const peekComment = useCallback((): Annotation | null => {
     const selection = peekSelectionComment();
     if (selection) return selection;
-    const base = { startOffset: 0, endOffset: 0, text: '', createdA: Date.now(), author: getIdentity() };
+    const base = { startOffset: 0, endOffset: 0, text: '', createdA: Date.now(), author: getAnnotationAuthor() };
     const open = viewerCommentPopoverRef.current;
     if (open?.isGlobal) return { ...base, id: 'global-kept', blockId: '', type: AnnotationType.GLOBAL_COMMENT, originalText: '' };
     if (open?.codeBlock) {
@@ -1742,7 +1744,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
         text: text.trim(),
         originalText: '',
         createdA: Date.now(),
-        author: getIdentity(),
+        author: getAnnotationAuthor(),
         images,
         ...(mentions && mentions.length > 0 ? { mentions } : {}),
       };
@@ -2523,6 +2525,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
           alt={lightbox.alt}
           images={lightbox.images}
           regions={regionHost}
+          showWheelHint={imageLightboxWheelHint}
           onClose={closeLightbox}
         />,
         document.body

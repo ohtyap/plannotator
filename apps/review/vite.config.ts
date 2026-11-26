@@ -2,7 +2,6 @@ import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import pkg from '../../package.json';
 import { packedApp } from '../../build/pack-app';
 import { DEMO_FILE_CONTENTS } from '../../packages/review-editor/demoData';
 import { katexWoff2Only } from '../../build/katex-woff2-only';
@@ -29,9 +28,6 @@ export default defineConfig({
   server: {
     port: 3001,
     host: '0.0.0.0',
-  },
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [demoFileContentPlugin(), react(), tailwindcss(), katexWoff2Only(), packedApp()],
   resolve: {

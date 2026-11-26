@@ -46,15 +46,6 @@ interface FileHeaderProps {
   fileCommentButtonRef?: (el: HTMLButtonElement | null) => void;
   collapseToggle?: React.ReactNode;
   onCollapseToggle?: () => void;
-  /** EXPERIMENTAL edit-to-suggestion mode: enter edit mode on this file.
-   * Absent = the feature is off and no edit UI renders. */
-  onEditFile?: () => void;
-  /** This file currently hosts the active edit session. Suppresses the Edit
-   * entry button; the session controls live in the EditSessionHud strip the
-   * owner renders below this header, never here. */
-  isEditing?: boolean;
-  /** When set, the Edit button is disabled with this tooltip. */
-  editDisabledReason?: string | null;
   /** Compact coarse-pointer treatment. Defaults to the enclosing review state. */
   compactTouchLayout?: boolean;
   /** Marked `linguist-generated` in `.gitattributes` (#1317) — renders a
@@ -134,9 +125,6 @@ const FileHeaderView: React.FC<FileHeaderProps> = ({
   fileCommentButtonRef,
   collapseToggle,
   onCollapseToggle,
-  onEditFile,
-  isEditing = false,
-  editDisabledReason,
   compactTouchLayout,
   readOnly = false,
   isGenerated = false,
@@ -243,7 +231,6 @@ const FileHeaderView: React.FC<FileHeaderProps> = ({
           extraItems={() => [
             ...(tinyNow() && showStageControl && canStage && onStage ? [{ label: isStaged ? 'Unstage this file' : 'Stage this file', onSelect: onStage }] : []),
             ...(tinyNow() && onFileComment ? [{ label: 'Comment on this file', onSelect: () => headerRef.current && onFileComment(headerRef.current) }] : []),
-            ...(tinyNow() && onEditFile && !isEditing && !editDisabledReason ? [{ label: 'Edit to suggest a change', onSelect: onEditFile }] : []),
             ...(state?.onOpenToSide ? [{ label: 'Open to the side', onSelect: () => state.onOpenToSide!(filePath), icon: <OpenToSideIcon /> }] : []),
           ]}
           filePath={filePath}
@@ -335,30 +322,6 @@ const FileHeaderView: React.FC<FileHeaderProps> = ({
             {commentLabel && <span>{commentLabel}</span>}
           </button>
         )}
-        {/* Edit entry lives at the far right of the row, next to the file
-            actions dropdown, so the experimental affordance stays out of the
-            everyday Viewed/Add/Comment cluster. */}
-        {onEditFile && !isEditing && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!editDisabledReason) onEditFile();
-            }}
-            disabled={!!editDisabledReason}
-            className={`${actionFold} text-xs rounded transition-colors flex items-center ${TIGHT_PAD} ${
-              editDisabledReason
-                ? 'opacity-50 cursor-not-allowed text-muted-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-            }`}
-            title={editDisabledReason ?? 'Edit this file to author a suggestion (experimental)'}
-            data-testid="edit-session-start"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            <span className={TIGHT_LABEL}>Edit</span>
-          </button>
-        )}
       </div>}
       {isCompactTouchLayout && semantic && <SemanticFileBadge filePath={filePath} semantic={semantic} touch />}
       {isCompactTouchLayout && readOnly && renderMarkdownView?.({ iconOnly: false, touch: true })}
@@ -374,7 +337,6 @@ const FileHeaderView: React.FC<FileHeaderProps> = ({
           viewed={showViewedControl && onToggleViewed ? { isViewed, onToggle: onToggleViewed } : null}
           onComment={onFileComment ? () => headerRef.current && onFileComment(headerRef.current) : undefined}
           stage={showStageControl && canStage && onStage ? { isStaged, isStaging, onStage } : null}
-          onEdit={onEditFile && !isEditing && !editDisabledReason ? onEditFile : undefined}
         />
       )}
     </div>

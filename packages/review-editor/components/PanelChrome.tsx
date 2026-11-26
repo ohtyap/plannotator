@@ -66,7 +66,6 @@ export interface PanelControlsProps {
   /** The tools row's lead: the Changes / All files switch (`ScopeSwitch`).
    *  Unset: the row is labelled "Files". */
   scope?: React.ReactNode;
-  notice?: React.ReactNode;
 }
 
 /** 24 px icon buttons (WCAG 2.2 target size); pressed is a quiet grey fill. */
@@ -312,7 +311,6 @@ export function PanelControlsRow(props: PanelControlsProps) {
     onToggleHideViewed,
     onToggleFilesCollapsed,
     filesCollapsed = false,
-    notice,
   } = props;
   const searchToggles = !!onCloseSearch;
   return (
@@ -355,7 +353,6 @@ export function PanelControlsRow(props: PanelControlsProps) {
           {copyRawDiffStatus === "success" ? "All diffs copied" : copyRawDiffStatus === "error" ? "Copy failed" : ""}
         </span>
       </div>
-      {notice}
     </StickyTools>
   );
 }

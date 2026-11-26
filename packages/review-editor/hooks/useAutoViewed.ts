@@ -38,13 +38,6 @@ export interface UseAutoViewedOptions {
    * a read-through of a 40-file PR is a handful of requests, not 40.
    */
   onSyncPlatformViewed?: (paths: string[]) => void;
-  /**
-   * Called after every auto-mark. The first-time notice rides this: the marker
-   * always marks, and the owner decides whether the toast can be shown right
-   * now (deferred behind a takeover or a first-run dialog, retried on the next
-   * fire) rather than losing it.
-   */
-  onAutoView?: () => void;
   /** The single-file diff panel's file while that panel is active, else null. */
   singleFileReadingFile: string | null;
   /**
@@ -73,7 +66,6 @@ export function useAutoViewed({
   suppressedFiles,
   onMark,
   onSyncPlatformViewed,
-  onAutoView,
   singleFileReadingFile,
   snapshotKey,
   syncBatchMs,
@@ -90,8 +82,6 @@ export function useAutoViewed({
   viewedRef.current = viewedFiles;
   const onMarkRef = useRef(onMark);
   onMarkRef.current = onMark;
-  const onAutoViewRef = useRef(onAutoView);
-  onAutoViewRef.current = onAutoView;
   const suspendedRef = useRef(suspended);
   suspendedRef.current = suspended;
   /** Collapsed flag of the file the all-files surface last reported. */
@@ -123,7 +113,6 @@ export function useAutoViewed({
   const applyMark = useCallback((filePath: string) => {
     onMarkRef.current([filePath]);
     if (syncRef.current) batcherRef.current?.add([filePath]);
-    onAutoViewRef.current?.();
   }, []);
 
   const attemptMark = useCallback((filePath: string) => {

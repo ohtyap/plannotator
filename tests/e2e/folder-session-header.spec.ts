@@ -107,7 +107,10 @@ test('annotate a folder: the header names the folder, cut from the start, and th
     await context.addCookies(COOKIES.map(([name, value]) => ({ name, value, url })));
     const page = await context.newPage();
     await page.goto(url);
-    await page.getByText('proposal', { exact: true }).first().click();
+    await page.getByRole('button', { name: 'Choose a file' }).click();
+    const picker = page.getByRole('dialog', { name: 'Choose a file' });
+    await picker.getByText('proposal', { exact: true }).click();
+    await expect(picker).toBeHidden();
     await expect(page.locator('article[data-print-region="article"]:visible h1')).toHaveText(/^Proposal/);
 
     // Room for the whole path: the header names the folder, the tab the file.

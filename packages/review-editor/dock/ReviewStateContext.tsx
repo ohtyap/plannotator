@@ -11,8 +11,6 @@ import type { PRArtifact } from '../utils/prArtifacts';
 import type { PRDiffScope } from '@plannotator/shared/pr-stack';
 import type { SemanticDiffChange } from '@plannotator/shared/semantic-diff-types';
 import type { FeedbackDiffContext } from '../utils/exportFeedback';
-import type { SuggestionHunk } from '../edit/deriveSuggestions';
-import type { EditSelectionComment } from '../edit/useEditSession';
 import type { CallFlowAnalysisState } from '../hooks/useCallFlowAnalysis';
 import type { CallFlowInstallController } from '../hooks/useCallFlowInstall';
 import type { CallFlowAdvert, CallFlowNode } from '@plannotator/shared/call-flow-types';
@@ -141,15 +139,6 @@ export interface ReviewState {
   ) => boolean;
   onAddAnnotation: (type: CodeAnnotationType, text?: string, suggestedCode?: string, originalCode?: string, conventionalLabel?: ConventionalLabel, decorations?: ConventionalDecoration[], tokenMeta?: TokenAnnotationMeta) => void;
   onAddAnnotationForFile: (filePath: string, type: CodeAnnotationType, text?: string, suggestedCode?: string, originalCode?: string, conventionalLabel?: ConventionalLabel, decorations?: ConventionalDecoration[], tokenMeta?: TokenAnnotationMeta) => void;
-  /** EXPERIMENTAL edit-to-suggestion flag (cookie setting, default OFF). Only
-   * the plain all-files panel consumes it — Guided Review surfaces stay off. */
-  editSuggestionsEnabled: boolean;
-  /** Sink for suggestions derived from a completed edit session (one hunk per
-   * contiguous changed region; becomes normal suggestion annotations). */
-  onAddSuggestionsForFile: (filePath: string, hunks: SuggestionHunk[]) => void;
-  /** Sink for a comment authored through the edit session's Selection Action
-   * ("Make annotation"): line-scoped comment on pristine new-side lines. */
-  onAddEditorCommentForFile: (filePath: string, comment: EditSelectionComment) => void;
   onAddFileComment: (text: string) => void;
   onAddFileCommentForFile: (filePath: string, text: string) => void;
   /** Explorer (step 2): a changed file's view, Changes or Whole file. Absent: no switch. */

@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitBranchPlus, MessageSquare, PencilLine } from 'lucide-react';
+import { GitBranchPlus, MessageSquare } from 'lucide-react';
 import { OpenInAppButton } from '@plannotator/ui/components/OpenInAppButton';
 
 interface CompactFileActionsProps {
@@ -13,16 +13,14 @@ interface CompactFileActionsProps {
   viewed: { isViewed: boolean; onToggle: () => void } | null;
   onComment?: () => void;
   stage: { isStaged: boolean; isStaging: boolean; onStage: () => void } | null;
-  onEdit?: () => void;
 }
 
 const ICON = 'w-4 h-4';
 
-export const CompactFileActions: React.FC<CompactFileActionsProps> = ({ filePath, patch, line, canOpen, base, markdownView, viewSwitch, viewed, onComment, stage, onEdit }) => {
+export const CompactFileActions: React.FC<CompactFileActionsProps> = ({ filePath, patch, line, canOpen, base, markdownView, viewSwitch, viewed, onComment, stage }) => {
   const items = [
     onComment && { label: 'Comment on this file', onSelect: onComment, icon: <MessageSquare className={ICON} /> },
     stage && { label: stage.isStaged ? 'Unstage this file' : 'Stage this file (git add)', onSelect: () => { if (!stage.isStaging) stage.onStage(); }, icon: <GitBranchPlus className={ICON} /> },
-    onEdit && { label: 'Edit to suggest a change', onSelect: onEdit, icon: <PencilLine className={ICON} /> },
   ].filter((item): item is { label: string; onSelect: () => void; icon: React.ReactElement } => !!item);
   return (
     <div className="flex flex-none items-center" data-compact-file-actions="">

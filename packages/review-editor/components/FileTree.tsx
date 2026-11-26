@@ -3,7 +3,6 @@ import { focusFileHeaderWhenLost } from '../utils/focusFileHeader';
 import { useCompactTouchLayout } from '@plannotator/ui/hooks/useIsMobile';
 import { CodeAnnotation } from '@plannotator/ui/types';
 import type {
-  JjEvoLogEntry,
   SinceBaseSections,
   WorktreeInfo,
 } from '@plannotator/shared/types';
@@ -13,7 +12,6 @@ import { buildFileStatusBlocks, FILE_STATUS_COVERS, FILE_STATUS_LABELS } from '.
 import { FileKindIcon, FILE_KIND_LABELS } from '@plannotator/guide-viewer/FileKindIcon';
 import { ChangesTreeView, type ChangesTreeHandle } from './ChangesTreeView';
 import { useAfterFirstCode } from '../utils/firstCodePaint';
-import { EvoLogPicker } from './EvoLogPicker';
 import { WorktreePicker } from './WorktreePicker';
 import { type ReviewSearchFileGroup, type ReviewSearchMatch } from '../utils/reviewSearch';
 import type { DiffFile } from '../types';
@@ -34,7 +32,6 @@ import { useHiddenViewedFiles } from '../hooks/useHiddenViewedFiles';
 import { useReviewStateOptional } from '../dock/ReviewStateContext';
 
 interface FileTreeProps {
-  controlsNotice?: React.ReactNode;
   /** The top of the panel (views, the comparison sentence, Changes | All
    *  files, Go to File), shared with the other views. Absent: no header. */
   header?: ReviewPanelHeaderModel;
@@ -69,21 +66,12 @@ interface FileTreeProps {
   showViewedControls?: boolean;
   onToggleShowViewedControls?: () => void;
   enableKeyboardNav?: boolean;
-  /** The active diff type: the jj evolution picker shows under the header for `jj-evolog`. */
-  activeDiffType?: string;
   isLoadingDiff?: boolean;
   width?: number;
   worktrees?: WorktreeInfo[];
   activeWorktreePath?: string | null;
   onSelectWorktree?: (path: string | null) => void;
   currentBranch?: string;
-  /** The evolution entry compared against (jj-evolog), and its picker. */
-  selectedBase?: string;
-  onSelectBase?: (branch: string) => void;
-  /** Evolution log entries for the current jj change (jj-evolog mode only). */
-  jjEvologs?: JjEvoLogEntry[];
-  /** Default evolog commit ID to compare against (second evolog entry). */
-  detectedEvoBase?: string;
   /** EFFECTIVE staged set from useGitAdd (sidecar + session overrides).
    *  REQUIRED and the ONLY staging source surfaces may render from — the
    *  sidecar's own `staged` flag is a snapshot and must never be ORed in. */
@@ -165,23 +153,17 @@ export const FileTree: React.FC<FileTreeProps> = ({
   showViewedControls = true,
   onToggleShowViewedControls,
   enableKeyboardNav = true,
-  activeDiffType,
   isLoadingDiff,
   width,
   worktrees,
   activeWorktreePath,
   onSelectWorktree,
   currentBranch,
-  selectedBase,
-  onSelectBase,
-  jjEvologs,
-  detectedEvoBase,
   stagedFiles,
   showStageControls = true,
   onToggleShowStageControls,
   autoViewed,
   onToggleAutoViewed,
-  controlsNotice,
   onCopyRawDiff,
   canCopyRawDiff = false,
   copyRawDiffStatus = 'idle',
@@ -395,7 +377,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
       onToggleShowStageControls={onToggleShowStageControls}
       autoViewed={autoViewed}
       onToggleAutoViewed={onToggleAutoViewed}
-      notice={controlsNotice}
       groupByKind={groupByKind}
       onToggleGroupByKind={onToggleGroupByKind}
       groupBy={onSelectGroupBy ? effectiveGroupBy : undefined}
@@ -471,29 +452,6 @@ export const FileTree: React.FC<FileTreeProps> = ({
           />
         </div>
       )}
-
-      {/* Evolog picker — only shown when jj-evolog diff type is active */}
-      {activeDiffType === 'jj-evolog' &&
-        onSelectBase &&
-        selectedBase &&
-        jjEvologs &&
-        jjEvologs.length >= 2 &&
-        detectedEvoBase && (
-          <div className="px-2 py-1.5 border-b border-border/30 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground flex-shrink-0">
-              from evolution
-            </span>
-            <div className="flex-1 min-w-0">
-              <EvoLogPicker
-                entries={jjEvologs}
-                selectedCommitId={selectedBase}
-                detectedCommitId={detectedEvoBase}
-                onSelect={onSelectBase}
-                disabled={isLoadingDiff}
-              />
-            </div>
-          </div>
-        )}
 
       {/* The list: the nav rows scroll with it; the tools and progress rows
           stick to its top. Then the file tree, All files or search results. */}

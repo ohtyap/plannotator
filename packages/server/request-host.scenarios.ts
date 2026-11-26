@@ -53,7 +53,7 @@ export function defineRequestHostScenarios(runtime: string, start: StartHostScen
       "PLANNOTATOR_REMOTE",
       "PLANNOTATOR_DATA_DIR",
       "PLANNOTATOR_BROWSER",
-      "PLANNOTATOR_AI",
+      "PLANNOTATOR_OPENCODE_URL",
       "PLANNOTATOR_URL_HOST",
       "PLANNOTATOR_PUBLIC_URL",
       "PLANNOTATOR_ALLOWED_HOSTS",
@@ -71,7 +71,7 @@ export function defineRequestHostScenarios(runtime: string, start: StartHostScen
     const dir = environment.makeTempDir();
     process.env.PLANNOTATOR_DATA_DIR = join(dir, "data");
     process.env.PLANNOTATOR_BROWSER = "/usr/bin/true";
-    process.env.PLANNOTATOR_AI = "disabled";
+    process.env.PLANNOTATOR_OPENCODE_URL = "";
     process.env.PLANNOTATOR_REMOTE = options.remote ? "1" : "0";
     if (options.allowedHosts !== undefined) process.env.PLANNOTATOR_ALLOWED_HOSTS = options.allowedHosts;
     if (options.remote) {

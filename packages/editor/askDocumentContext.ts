@@ -6,10 +6,8 @@
  * session is created once, from the document on screen at the first question
  * (a separate AI gets that document in its session context; "Ask this session"
  * gets its surface line), so a later question names the document the reviewer
- * moved to. It names it by path, so the agent reads the file itself, instead
- * of pasting the document into every question. Only a document with no file
- * the agent can open (a converted URL page, an agent message, a plan without a
- * known file) carries its text, and only once, when it changes.
+ * moved to. For a tool-free chat the note includes the document text when
+ * the file or its contents change. Other hosts can point their agent at a path.
  */
 export interface AskDocument {
   /** What makes two views the same document for the agent. A file is its
@@ -38,7 +36,7 @@ export interface AskDocument {
   version?: number;
   /** "file 2 of 3" in a review of several files. */
   position?: { index: number; total: number };
-  /** The text on screen, for a document with no readable path. */
+  /** The text on screen when the chat cannot read the file itself. */
   content?: string;
 }
 
@@ -98,6 +96,7 @@ export function describeAskDocument(input: {
   version?: number;
   position?: { index: number; total: number };
   content: string;
+  inlineContent?: boolean;
 }): AskDocument {
   const readable = isReadableDocumentPath(input.path) ? input.path : undefined;
   const urlCandidate = input.sourceUrl ?? input.path ?? undefined;
@@ -111,7 +110,13 @@ export function describeAskDocument(input: {
     ...(input.kind === 'plan' && isReadableDocumentPath(input.ownPath) ? { ownPath: input.ownPath } : {}),
   };
   if (readable) {
-    return { ...base, key: `${input.kind}|file|${readable}|${input.renderAs ?? ''}|${input.converted ? 'c' : ''}`, path: readable };
+    const key = `${input.kind}|file|${readable}|${input.renderAs ?? ''}|${input.converted ? 'c' : ''}`;
+    return {
+      ...base,
+      path: readable,
+      key: input.inlineContent ? `${key}|${input.version ?? ''}|${hashText(input.content)}` : key,
+      ...(input.inlineContent && { content: input.content }),
+    };
   }
   return {
     ...base,
@@ -160,7 +165,7 @@ function currentLine(doc: AskDocument, earlier: AskDocument[], sessionBridge: bo
           : `The plan was revised${version}. This replaces the plan shown earlier in this chat.`;
       }
       return path
-        ? `The plan was revised${version}: ${path}. This replaces the plan shown earlier in this chat; read the file for its current text.`
+        ? `The plan was revised${version}: ${path}. This replaces the plan shown earlier in this chat${doc.content === undefined ? '; read the file for its current text.' : '.'}`
         : `The plan was revised${version}. This replaces the plan shown earlier in this chat.`;
     }
     const where = path ? `: ${path}` : '';
@@ -168,7 +173,7 @@ function currentLine(doc: AskDocument, earlier: AskDocument[], sessionBridge: bo
   }
   const verb = returning ? 'is back on' : 'is now looking at';
   if (doc.path) {
-    return `The reviewer ${verb} ${doc.path}${detailsOf(doc)}. This replaces the document named earlier in this chat; read the file for its contents.`;
+    return `The reviewer ${verb} ${doc.path}${detailsOf(doc)}. This replaces the document named earlier in this chat${doc.content === undefined ? '; read the file for its contents.' : '.'}`;
   }
   return `The reviewer ${verb} ${nameOf(doc, sessionBridge)}${detailsOf(doc)}. This replaces the document named earlier in this chat.`;
 }
@@ -181,7 +186,7 @@ function currentLine(doc: AskDocument, earlier: AskDocument[], sessionBridge: bo
  * - The same document as the last note adds nothing.
  * - A different document gets one short note: its path (and how it is shown),
  *   plus the documents viewed earlier in this chat, most recent first. A
- *   document with no readable path also carries its text, except for "Ask
+ *   document the agent cannot read also carries its text, except for "Ask
  *   this session" (`sessionBridge`): the agent wrote the plan or the message,
  *   or can open the URL itself, and a pasted copy would stay in its context
  *   window. That agent is also never pointed at the plan's history copy.
@@ -213,7 +218,7 @@ export function planAskDocumentContext(
   }
   // A text already sent in this chat (the reviewer came back to it) is not sent again.
   const sentBefore = earlier.some(e => e.key === doc.key);
-  if (!doc.path && !options.sessionBridge && !sentBefore && doc.content?.trim()) {
+  if (!options.sessionBridge && !sentBefore && doc.content?.trim()) {
     // Whole up to MAX_ASK_DOCUMENT_CONTENT_CHARS (the session context's bound in packages/ai/context.ts),
     // past it cut with a marker the model reads (through 0.28.61 the cut was at 60,000 characters).
     let text = doc.content;

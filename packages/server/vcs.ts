@@ -4,7 +4,6 @@ import {
   type VcsProvider,
   createGitButlerProvider,
   createGitProvider,
-  createJjProvider,
   createVcsApi,
   resolveAvailableDiffType,
   resolveInitialDiffType,
@@ -17,7 +16,6 @@ import {
 } from "./p4";
 import { runtime as gitRuntime } from "./git";
 import { runtime as gitButlerRuntime } from "./gitbutler";
-import { runtime as jjRuntime } from "./jj";
 
 const p4Provider: VcsProvider = {
   id: "p4",
@@ -42,7 +40,6 @@ const p4Provider: VcsProvider = {
 };
 
 const api = createVcsApi([
-  createJjProvider(jjRuntime, gitRuntime),
   createGitButlerProvider(gitButlerRuntime),
   createGitProvider(gitRuntime),
   p4Provider,
