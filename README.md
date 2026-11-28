@@ -60,7 +60,8 @@ service, `OPENCODE_PASSWORD`. With only `OPENCODE_PASSWORD` set, Plannotator use
 the managed loopback endpoint at `http://127.0.0.1:49375`. OpenCode supplies
 the model defaults; Plannotator never starts a service or offers an agent
 picker. AI actions appear only when Plannotator connects to OpenCode V2 at
-launch. Manual review and annotation still work without OpenCode.
+launch. Ask AI answers appear in Plannotator without creating an OpenCode
+session. Manual review and annotation still work without OpenCode.
 
 ## Annotate
 

@@ -7,10 +7,12 @@
 
 `packages/server/ai-runtime.ts` registers only the OpenCode V2 connection.
 It probes the preconfigured endpoint without discovering or starting a service.
-Ask AI uses a new, tool-disabled OpenCode session, scoped to the server-selected
-directory. On a worktree switch, code review starts a new chat; within a worktree
-it supplies the rendered patch when the diff changes. Annotate supplies
-visible document text rather than asking the agent to read a file.
+Ask AI uses tool-free text generation without creating an OpenCode session.
+Plannotator keeps recent questions and answers in memory for follow-ups and
+shows each answer when it is complete. On a worktree switch, code review starts
+a new chat; within a worktree it supplies the rendered patch when the diff
+changes. Annotate supplies visible document text rather than asking the agent
+to read a file.
 
 Review Agent and Guided Review use tool-free text generation over the
 launch-time patch. `packages/server/agent-jobs.ts` keeps launch details
